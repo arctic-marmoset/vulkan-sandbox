@@ -1,0 +1,11 @@
+cmake-build-*/
+[Bb]uild/
+[Oo]ut/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+
+.idea/
+
+**/.DS_Store
