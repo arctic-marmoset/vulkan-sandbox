@@ -8,3 +8,20 @@ set(CMAKE_CXX_EXTENSIONS NO)
 add_executable(renderer
     src/main.cpp
 )
+
+find_package(glfw3 REQUIRED)
+
+target_compile_definitions(renderer
+    PRIVATE
+        GLFW_INCLUDE_NONE
+)
+
+target_include_directories(renderer
+    PRIVATE
+        include
+)
+
+target_link_libraries(renderer
+    PRIVATE
+        glfw
+)

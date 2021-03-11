@@ -6,6 +6,7 @@ cmake-build-*/
 [Dd]ebug/
 [Rr]elease/
 
+.cache/
 .idea/
 
 **/.DS_Store
