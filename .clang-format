@@ -1,4 +1,6 @@
 AccessModifierOffset: -4
+AlignConsecutiveAssignments: true
+AllowShortBlocksOnASingleLine: Never
 AllowShortIfStatementsOnASingleLine: false
 BasedOnStyle: LLVM
 BreakBeforeBraces: Linux
