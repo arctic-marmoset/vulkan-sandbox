@@ -22,7 +22,7 @@ constexpr std::uint32_t window_width  = 1280;
 constexpr std::uint32_t window_height = 720;
 
 constexpr std::array validation_layers = {
-    "VK_LAYER_KHRONOS_validation"
+    "VK_LAYER_KHRONOS_validation",
 };
 
 #ifndef NDEBUG
@@ -57,8 +57,7 @@ bool validation_layers_supported()
     auto layers = vk::enumerateInstanceLayerProperties();
     std::ranges::sort(layers, { }, &vk::LayerProperties::layerName);
 
-    const auto name_projection = [](const vk::LayerProperties &properties)
-    {
+    const auto name_projection = [](const vk::LayerProperties &properties) {
         auto name = static_cast<std::string_view>(properties.layerName);
         return name;
     };
@@ -79,9 +78,9 @@ std::vector<const char *> required_extensions()
     return extensions;
 }
 
-void init_debug_messenger_create_info(vk::DebugUtilsMessengerCreateInfoEXT &createInfo)
+void init_debug_messenger_create_info(vk::DebugUtilsMessengerCreateInfoEXT &create_info)
 {
-    createInfo = {
+    create_info = {
         .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
                          | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
                          | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
@@ -122,6 +121,7 @@ private:
         create_instance();
         attach_debug_messenger();
         select_physical_device();
+        create_logical_device();
     }
 
     void create_instance()
@@ -135,7 +135,7 @@ private:
                 throw std::runtime_error("Validation layers requested but not supported!");
         }
 
-        const vk::ApplicationInfo appInfo = {
+        const vk::ApplicationInfo app_info = {
             .pApplicationName   = "Hello Triangle",
             .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
             .pEngineName        = "Sandbox",
@@ -144,26 +144,26 @@ private:
         };
 
         vk::StructureChain<vk::InstanceCreateInfo, vk::DebugUtilsMessengerCreateInfoEXT> chain;
-        auto &createInfo      = chain.get<vk::InstanceCreateInfo>();
-        auto &debugCreateInfo = chain.get<vk::DebugUtilsMessengerCreateInfoEXT>();
+        auto &create_info       = chain.get<vk::InstanceCreateInfo>();
+        auto &debug_create_info = chain.get<vk::DebugUtilsMessengerCreateInfoEXT>();
 
         const auto extensions = required_extensions();
 
-        createInfo = {
-            .pApplicationInfo        = &appInfo,
+        create_info = {
+            .pApplicationInfo        = &app_info,
             .enabledExtensionCount   = static_cast<std::uint32_t>(extensions.size()),
             .ppEnabledExtensionNames = extensions.data(),
         };
 
         if constexpr (debug_mode) {
-            init_debug_messenger_create_info(debugCreateInfo);
-            createInfo.enabledLayerCount   = static_cast<std::uint32_t>(validation_layers.size());
-            createInfo.ppEnabledLayerNames = validation_layers.data();
+            init_debug_messenger_create_info(debug_create_info);
+            create_info.enabledLayerCount   = static_cast<std::uint32_t>(validation_layers.size());
+            create_info.ppEnabledLayerNames = validation_layers.data();
         } else {
             chain.unlink<vk::DebugUtilsMessengerCreateInfoEXT>();
         }
 
-        instance_ = vk::createInstance(createInfo);
+        instance_ = vk::createInstance(create_info);
         VULKAN_HPP_DEFAULT_DISPATCHER.init(instance_);
     }
 
@@ -172,10 +172,10 @@ private:
         if constexpr (!debug_mode)
             return;
 
-        vk::DebugUtilsMessengerCreateInfoEXT createInfo;
-        init_debug_messenger_create_info(createInfo);
+        vk::DebugUtilsMessengerCreateInfoEXT create_info;
+        init_debug_messenger_create_info(create_info);
 
-        debug_messenger_ = instance_.createDebugUtilsMessengerEXT(createInfo);
+        debug_messenger_ = instance_.createDebugUtilsMessengerEXT(create_info);
     }
 
     void select_physical_device()
@@ -220,6 +220,32 @@ private:
         return indices;
     }
 
+    void create_logical_device()
+    {
+        ::queue_family_indices indices = find_queue_families(physical_device_);
+
+        const float queue_priority = 1.0f;
+
+        const vk::DeviceQueueCreateInfo queue_create_info = {
+            .queueFamilyIndex = indices.graphics_family.value(),
+            .queueCount       = 1,
+            .pQueuePriorities = &queue_priority,
+        };
+
+        vk::PhysicalDeviceFeatures device_features = { };
+
+        const vk::DeviceCreateInfo create_info = {
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos    = &queue_create_info,
+            .pEnabledFeatures     = &device_features,
+        };
+
+        device_ = physical_device_.createDevice(create_info);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(device_);
+
+        graphics_queue_ = device_.getQueue(indices.graphics_family.value(), 0);
+    }
+
     void main_loop()
     {
         while (!glfwWindowShouldClose(window_)) {
@@ -229,6 +255,8 @@ private:
 
     void cleanup()
     {
+        device_.destroy();
+
         if constexpr (debug_mode)
             instance_.destroy(debug_messenger_);
 
@@ -244,6 +272,8 @@ private:
     vk::DebugUtilsMessengerEXT debug_messenger_;
 #endif
     vk::PhysicalDevice physical_device_;
+    vk::Device device_;
+    vk::Queue graphics_queue_;
 };
 
 int main()
