@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS NO)
 
 add_executable(renderer
     src/main.cpp
+    src/vulkan_dispatcher.cpp
 )
 
 find_package(glfw3 REQUIRED)
@@ -16,6 +17,7 @@ target_compile_definitions(renderer
     PRIVATE
         GLFW_INCLUDE_NONE
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )
 
 target_include_directories(renderer
@@ -25,6 +27,7 @@ target_include_directories(renderer
 
 target_link_libraries(renderer
     PRIVATE
+        ${CMAKE_DL_LIBS}
         glfw
         vulkan
 )
