@@ -1,14 +1,22 @@
 #include <GLFW/glfw3.h>
-#include <vulkan/vk_platform.h>
 #include <vulkan/vulkan.hpp>
 
 #include <algorithm>
-#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
+
+struct queue_family_indices {
+    std::optional<std::uint32_t> graphics_family;
+
+    bool complete() const
+    {
+        return graphics_family.has_value();
+    }
+};
 
 constexpr std::uint32_t window_width  = 1280;
 constexpr std::uint32_t window_height = 720;
@@ -31,13 +39,13 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagB
     switch (message_severity) {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        std::printf("[DEBUG_CALLBACK] %s\n", data->pMessage);
+        std::cout << "[DEBUG_CALLBACK] " << data->pMessage << '\n';
         break;
 
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
-        std::fprintf(stderr, "[DEBUG_CALLBACK] %s\n", data->pMessage);
+        std::cerr << "[DEBUG_CALLBACK] " << data->pMessage << '\n';
         break;
     }
 
@@ -113,6 +121,7 @@ private:
     {
         create_instance();
         attach_debug_messenger();
+        select_physical_device();
     }
 
     void create_instance()
@@ -169,6 +178,48 @@ private:
         debug_messenger_ = instance_.createDebugUtilsMessengerEXT(createInfo);
     }
 
+    void select_physical_device()
+    {
+        const auto devices = instance_.enumeratePhysicalDevices();
+
+        if (devices.empty())
+            throw std::runtime_error("Failed to find a GPU with Vulkan support!");
+
+        const auto candidate = std::ranges::find_if(devices, [this](const vk::PhysicalDevice &device) {
+            return is_device_suitable(device);
+        });
+
+        if (candidate == devices.end())
+            throw std::runtime_error("Failed to find a GPU suitable for this application!");
+
+        physical_device_ = *candidate;
+    }
+
+    bool is_device_suitable(const vk::PhysicalDevice &device)
+    {
+        const auto indices = find_queue_families(device);
+        return indices.complete();
+    }
+
+    ::queue_family_indices find_queue_families(const vk::PhysicalDevice &device)
+    {
+        ::queue_family_indices indices;
+
+        const auto queue_families = device.getQueueFamilyProperties();
+
+        for (std::uint32_t i = 0; i < queue_families.size(); ++i) {
+            const auto &queue_family = queue_families[i];
+
+            if (queue_family.queueFlags & vk::QueueFlagBits::eGraphics)
+                indices.graphics_family = i;
+
+            if (indices.complete())
+                break;
+        }
+
+        return indices;
+    }
+
     void main_loop()
     {
         while (!glfwWindowShouldClose(window_)) {
@@ -192,6 +243,7 @@ private:
 #ifndef NDEBUG
     vk::DebugUtilsMessengerEXT debug_messenger_;
 #endif
+    vk::PhysicalDevice physical_device_;
 };
 
 int main()
