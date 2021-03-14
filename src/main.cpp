@@ -1,20 +1,23 @@
-#include <GLFW/glfw3.h>
 #include <vulkan/vulkan.hpp>
+#include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string_view>
 
 struct queue_family_indices {
     std::optional<std::uint32_t> graphics_family;
+    std::optional<std::uint32_t> present_family;
 
-    bool complete() const
+    [[nodiscard]] bool complete() const
     {
-        return graphics_family.has_value();
+        return graphics_family.has_value()
+            && present_family.has_value();
     }
 };
 
@@ -120,6 +123,7 @@ private:
     {
         create_instance();
         attach_debug_messenger();
+        create_surface();
         select_physical_device();
         create_logical_device();
     }
@@ -178,6 +182,16 @@ private:
         debug_messenger_ = instance_.createDebugUtilsMessengerEXT(create_info);
     }
 
+    void create_surface()
+    {
+        VkSurfaceKHR surface;
+
+        if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface) != VK_SUCCESS)
+            throw std::runtime_error("Failed to window surface!");
+        
+        surface_ = surface;
+    }
+
     void select_physical_device()
     {
         const auto devices = instance_.enumeratePhysicalDevices();
@@ -213,6 +227,11 @@ private:
             if (queue_family.queueFlags & vk::QueueFlagBits::eGraphics)
                 indices.graphics_family = i;
 
+            const vk::Bool32 present_support = device.getSurfaceSupportKHR(i, surface_);
+
+            if (present_support)
+                indices.present_family = i;
+
             if (indices.complete())
                 break;
         }
@@ -226,17 +245,27 @@ private:
 
         const float queue_priority = 1.0f;
 
-        const vk::DeviceQueueCreateInfo queue_create_info = {
-            .queueFamilyIndex = indices.graphics_family.value(),
-            .queueCount       = 1,
-            .pQueuePriorities = &queue_priority,
+        const std::set unique_queue_families = {
+            indices.graphics_family.value(),
+            indices.present_family.value(),
+        };
+
+        std::vector<vk::DeviceQueueCreateInfo> queue_create_infos;
+        queue_create_infos.reserve(unique_queue_families.size());
+
+        for (auto queue_family : unique_queue_families) {
+            queue_create_infos.push_back({
+                .queueFamilyIndex = queue_family,
+                .queueCount       = 1,
+                .pQueuePriorities = &queue_priority,
+            });
         };
 
         vk::PhysicalDeviceFeatures device_features = { };
 
         const vk::DeviceCreateInfo create_info = {
-            .queueCreateInfoCount = 1,
-            .pQueueCreateInfos    = &queue_create_info,
+            .queueCreateInfoCount = static_cast<std::uint32_t>(queue_create_infos.size()),
+            .pQueueCreateInfos    = queue_create_infos.data(),
             .pEnabledFeatures     = &device_features,
         };
 
@@ -244,6 +273,7 @@ private:
         VULKAN_HPP_DEFAULT_DISPATCHER.init(device_);
 
         graphics_queue_ = device_.getQueue(indices.graphics_family.value(), 0);
+        present_queue_ = device_.getQueue(indices.present_family.value(), 0);
     }
 
     void main_loop()
@@ -256,6 +286,8 @@ private:
     void cleanup()
     {
         device_.destroy();
+
+        instance_.destroy(surface_);
 
         if constexpr (debug_mode)
             instance_.destroy(debug_messenger_);
@@ -271,9 +303,11 @@ private:
 #ifndef NDEBUG
     vk::DebugUtilsMessengerEXT debug_messenger_;
 #endif
+    vk::SurfaceKHR surface_;
     vk::PhysicalDevice physical_device_;
     vk::Device device_;
     vk::Queue graphics_queue_;
+    vk::Queue present_queue_;
 };
 
 int main()
