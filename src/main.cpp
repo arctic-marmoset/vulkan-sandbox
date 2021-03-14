@@ -138,6 +138,7 @@ private:
         select_physical_device();
         create_logical_device();
         create_swapchain();
+        create_image_views();
     }
 
     void create_instance()
@@ -422,6 +423,29 @@ private:
         };
     }
 
+    void create_image_views()
+    {
+        swapchain_image_views_.reserve(swapchain_images_.size());
+
+        for (const auto &image : swapchain_images_) {
+            const vk::ImageViewCreateInfo create_info = {
+                .image            = image,
+                .viewType         = vk::ImageViewType::e2D,
+                .format           = swapchain_image_format_,
+                .subresourceRange = {
+                    .aspectMask     = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1,
+                },
+            };
+
+            auto image_view = device_.createImageView(create_info);
+            swapchain_image_views_.push_back(image_view);
+        }
+    }
+
     void main_loop()
     {
         while (!glfwWindowShouldClose(window_)) {
@@ -431,6 +455,9 @@ private:
 
     void cleanup()
     {
+        for (auto image_view : swapchain_image_views_)
+            device_.destroy(image_view);
+
         device_.destroy(swapchain_);
         device_.destroy();
 
@@ -459,6 +486,7 @@ private:
     vk::Extent2D swapchain_extent_;
     vk::SwapchainKHR swapchain_;
     std::vector<vk::Image> swapchain_images_;
+    std::vector<vk::ImageView> swapchain_image_views_;
 };
 
 int main()
