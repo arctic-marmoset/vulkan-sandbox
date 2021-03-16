@@ -1,3 +1,5 @@
+#include "utility.hpp"
+
 #include <vulkan/vulkan.hpp>
 #include <GLFW/glfw3.h>
 
@@ -29,7 +31,7 @@ struct swapchain_support_details {
     std::vector<vk::PresentModeKHR> present_modes;
 };
 
-constexpr std::uint32_t window_width  = 1280;
+constexpr std::uint32_t window_width = 1280;
 constexpr std::uint32_t window_height = 720;
 
 constexpr std::array validation_layers = {
@@ -139,6 +141,7 @@ private:
         create_logical_device();
         create_swapchain();
         create_image_views();
+        create_graphics_pipeline();
     }
 
     void create_instance()
@@ -444,6 +447,45 @@ private:
             auto image_view = device_.createImageView(create_info);
             swapchain_image_views_.push_back(image_view);
         }
+    }
+
+    void create_graphics_pipeline()
+    {
+        const auto vertex_shader_bytecode = read_file("resources/shaders/triangle/triangle.vert.spv");
+        const auto fragment_shader_bytecode = read_file("resources/shaders/triangle/triangle.frag.spv");
+
+        const auto vertex_shader_module = create_shader_module(vertex_shader_bytecode);
+        const auto fragment_shader_module = create_shader_module(fragment_shader_bytecode);
+
+        const vk::PipelineShaderStageCreateInfo vertex_shader_stage_create_info = {
+            .stage  = vk::ShaderStageFlagBits::eVertex,
+            .module = vertex_shader_module,
+            .pName  = "main",
+        };
+
+        const vk::PipelineShaderStageCreateInfo fragment_shader_stage_create_info = {
+            .stage  = vk::ShaderStageFlagBits::eFragment,
+            .module = fragment_shader_module,
+            .pName  = "main",
+        };
+
+        const std::array shader_stages = {
+            vertex_shader_stage_create_info,
+            fragment_shader_stage_create_info,
+        };
+
+        device_.destroy(vertex_shader_module);
+        device_.destroy(fragment_shader_module);
+    }
+
+    vk::ShaderModule create_shader_module(const std::vector<std::byte> &code)
+    {
+        const vk::ShaderModuleCreateInfo create_info = {
+            .codeSize = static_cast<std::uint32_t>(code.size()),
+            .pCode    = reinterpret_cast<const std::uint32_t *>(code.data()),
+        };
+
+        return device_.createShaderModule(create_info);
     }
 
     void main_loop()

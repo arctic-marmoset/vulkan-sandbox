@@ -2,11 +2,11 @@ cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(VulkanSandbox)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED YES)
-set(CMAKE_CXX_EXTENSIONS NO)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS FALSE)
 
-option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" YES)
-option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" NO)
+option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" TRUE)
+option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
 
 if(MSVC)
     string(REGEX REPLACE "[-/]W[1-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -85,31 +85,63 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
     endif()
 endif()
 
+find_package(glfw3 REQUIRED)
+find_package(Vulkan REQUIRED)
+
 add_executable(renderer
     src/main.cpp
     src/vulkan_dispatcher.cpp
 )
 
-find_package(glfw3 REQUIRED)
-find_package(Vulkan REQUIRED)
+find_program(GLSL_VALIDATOR glslc REQUIRED)
+
+set(GLSL_SOURCES
+    resources/shaders/triangle/triangle.frag
+    resources/shaders/triangle/triangle.vert
+)
+
+foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
+    get_filename_component(FILE_NAME ${RELATIVE_SOURCE_PATH} NAME)
+    get_filename_component(FILE_DIR ${RELATIVE_SOURCE_PATH} DIRECTORY)
+    set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/${RELATIVE_SOURCE_PATH}")
+    set(OUTPUT_DIR "${PROJECT_BINARY_DIR}/${FILE_DIR}")
+    set(OUTPUT_FILE "${OUTPUT_DIR}/${FILE_NAME}.spv")
+
+    add_custom_command(
+        OUTPUT ${OUTPUT_FILE}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
+        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -o ${OUTPUT_FILE}
+        DEPENDS ${SOURCE_PATH}
+        VERBATIM
+    )
+    list(APPEND SPIRV_BYTECODE ${OUTPUT_FILE})
+endforeach()
+
+add_custom_target(renderer_shaders
+    DEPENDS ${SPIRV_BYTECODE}
+)
+
+add_dependencies(renderer
+    renderer_shaders
+)
 
 target_compile_definitions(renderer
     PRIVATE
-    GLFW_INCLUDE_NONE
-    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
-    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+        GLFW_INCLUDE_NONE
+        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )
 
 target_include_directories(renderer
     PRIVATE
-    include
+        include
 )
 
 target_link_libraries(renderer
     PRIVATE
-    ${CMAKE_DL_LIBS}
-    glfw
-    vulkan
+        ${CMAKE_DL_LIBS}
+        glfw
+        vulkan
 )
 
 target_compile_options(renderer PRIVATE ${SANDBOX_WARN_FLAGS})
