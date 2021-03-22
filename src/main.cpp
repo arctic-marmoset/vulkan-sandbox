@@ -144,6 +144,7 @@ private:
         create_image_views();
         create_render_pass();
         create_graphics_pipeline();
+        create_framebuffers();
     }
 
     void create_instance()
@@ -199,7 +200,9 @@ private:
         vk::DebugUtilsMessengerCreateInfoEXT create_info;
         init_debug_messenger_create_info(create_info);
 
+#ifndef NDEBUG
         debug_messenger_ = instance_.createDebugUtilsMessengerEXT(create_info);
+#endif
     }
 
     void create_surface()
@@ -607,6 +610,25 @@ private:
         device_.destroy(fragment_shader_module);
     }
 
+    void create_framebuffers()
+    {
+        swapchain_framebuffers_.reserve(swapchain_image_views_.size());
+
+        for (const auto &image_view : swapchain_image_views_) {
+            const vk::FramebufferCreateInfo create_info = {
+                .renderPass      = render_pass_,
+                .attachmentCount = 1,
+                .pAttachments    = &image_view,
+                .width           = swapchain_extent_.width,
+                .height          = swapchain_extent_.height,
+                .layers          = 1,
+            };
+
+            auto framebuffer = device_.createFramebuffer(create_info);
+            swapchain_framebuffers_.push_back(framebuffer);
+        }
+    }
+
     vk::ShaderModule create_shader_module(const std::vector<std::byte> &code)
     {
         const vk::ShaderModuleCreateInfo create_info = {
@@ -626,6 +648,9 @@ private:
 
     void cleanup()
     {
+        for (auto framebuffer : swapchain_framebuffers_)
+            device_.destroy(framebuffer);
+
         device_.destroyPipeline(graphics_pipeline_);
         device_.destroy(pipeline_layout_);
         device_.destroy(render_pass_);
@@ -638,8 +663,9 @@ private:
 
         instance_.destroy(surface_);
 
-        if constexpr (debug_mode)
-            instance_.destroy(debug_messenger_);
+#ifndef NDEBUG
+        instance_.destroy(debug_messenger_);
+#endif
 
         instance_.destroy();
         glfwDestroyWindow(window_);
@@ -665,6 +691,7 @@ private:
     vk::RenderPass render_pass_;
     vk::PipelineLayout pipeline_layout_;
     vk::Pipeline graphics_pipeline_;
+    std::vector<vk::Framebuffer> swapchain_framebuffers_;
 };
 
 int main()
