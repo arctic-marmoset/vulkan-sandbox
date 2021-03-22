@@ -143,6 +143,7 @@ private:
         create_logical_device();
         create_swapchain();
         create_image_views();
+        create_render_pass();
         create_graphics_pipeline();
     }
 
@@ -453,6 +454,39 @@ private:
         }
     }
 
+    void create_render_pass()
+    {
+        const vk::AttachmentDescription color_attachment = {
+            .format         = swapchain_image_format_,
+            .samples        = vk::SampleCountFlagBits::e1,
+            .loadOp         = vk::AttachmentLoadOp::eClear,
+            .storeOp        = vk::AttachmentStoreOp::eStore,
+            .stencilLoadOp  = vk::AttachmentLoadOp::eDontCare,
+            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+            .initialLayout  = vk::ImageLayout::eUndefined,
+            .finalLayout    = vk::ImageLayout::ePresentSrcKHR,
+        };
+
+        const vk::AttachmentReference color_attachment_reference = {
+            .attachment = 0,
+            .layout     = vk::ImageLayout::eColorAttachmentOptimal,
+        };
+
+        const vk::SubpassDescription subpass_description = {
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &color_attachment_reference,
+        };
+
+        const vk::RenderPassCreateInfo render_pass_create_info = {
+            .attachmentCount = 1,
+            .pAttachments    = &color_attachment,
+            .subpassCount    = 1,
+            .pSubpasses      = &subpass_description,
+        };
+
+        render_pass_ = device_.createRenderPass(render_pass_create_info);
+    }
+
     void create_graphics_pipeline()
     {
         const auto vertex_shader_bytecode   = read_file("resources/shaders/triangle/triangle.vert.spv");
@@ -571,6 +605,7 @@ private:
     void cleanup()
     {
         device_.destroy(pipeline_layout_);
+        device_.destroy(render_pass_);
 
         for (auto image_view : swapchain_image_views_)
             device_.destroy(image_view);
@@ -604,6 +639,7 @@ private:
     vk::SwapchainKHR swapchain_;
     std::vector<vk::Image> swapchain_images_;
     std::vector<vk::ImageView> swapchain_image_views_;
+    vk::RenderPass render_pass_;
     vk::PipelineLayout pipeline_layout_;
 };
 
