@@ -127,7 +127,7 @@ add_dependencies(renderer
 
 target_compile_definitions(renderer
     PRIVATE
-        GLFW_INCLUDE_NONE
+        GLFW_INCLUDE_VULKAN
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )

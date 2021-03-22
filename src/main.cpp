@@ -1,7 +1,7 @@
 #include "utility.hpp"
 
-#include <vulkan/vulkan.hpp>
 #include <GLFW/glfw3.h>
+#include <vulkan/vulkan.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -13,12 +13,14 @@
 #include <set>
 #include <stdexcept>
 #include <string_view>
+#include <vulkan/vulkan_core.h>
 
 struct queue_family_indices {
     std::optional<std::uint32_t> graphics_family;
     std::optional<std::uint32_t> present_family;
 
-    [[nodiscard]] bool complete() const
+    [[nodiscard]]
+    bool complete() const
     {
         return graphics_family.has_value()
             && present_family.has_value();
@@ -31,7 +33,7 @@ struct swapchain_support_details {
     std::vector<vk::PresentModeKHR> present_modes;
 };
 
-constexpr std::uint32_t window_width = 1280;
+constexpr std::uint32_t window_width  = 1280;
 constexpr std::uint32_t window_height = 720;
 
 constexpr std::array validation_layers = {
@@ -147,6 +149,8 @@ private:
     void create_instance()
     {
         const vk::DynamicLoader loader;
+
+        // NOLINTNEXTLINE(readability-identifier-naming): Vulkan-specific function name
         auto *vkGetInstanceProcAddr = loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
@@ -200,11 +204,11 @@ private:
 
     void create_surface()
     {
-        VkSurfaceKHR surface;
+        VkSurfaceKHR surface = VK_NULL_HANDLE;
 
         if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface) != VK_SUCCESS)
             throw std::runtime_error("Failed to window surface!");
-        
+
         surface_ = surface;
     }
 
@@ -279,7 +283,7 @@ private:
 
     void create_logical_device()
     {
-        ::queue_family_indices indices = find_queue_families(physical_device_);
+        const ::queue_family_indices indices = find_queue_families(physical_device_);
 
         const float queue_priority = 1.0f;
 
@@ -299,7 +303,7 @@ private:
             });
         };
 
-        vk::PhysicalDeviceFeatures device_features = { };
+        const vk::PhysicalDeviceFeatures device_features = { };
 
         const vk::DeviceCreateInfo create_info = {
             .queueCreateInfoCount    = static_cast<std::uint32_t>(queue_create_infos.size()),
@@ -313,7 +317,7 @@ private:
         VULKAN_HPP_DEFAULT_DISPATCHER.init(device_);
 
         graphics_queue_ = device_.getQueue(indices.graphics_family.value(), 0);
-        present_queue_ = device_.getQueue(indices.present_family.value(), 0);
+        present_queue_  = device_.getQueue(indices.present_family.value(), 0);
     }
 
     ::swapchain_support_details query_swapchain_support(const vk::PhysicalDevice &device)
@@ -330,11 +334,11 @@ private:
         const auto swapchain_support = query_swapchain_support(physical_device_);
 
         const auto surface_format = select_swap_surface_format(swapchain_support.formats);
-        const auto present_mode = select_swap_present_mode(swapchain_support.present_modes);
-        const auto extent = select_swap_extent(swapchain_support.capabilities);
+        const auto present_mode   = select_swap_present_mode(swapchain_support.present_modes);
+        const auto extent         = select_swap_extent(swapchain_support.capabilities);
 
         const std::uint32_t desired_image_count = swapchain_support.capabilities.minImageCount + 1;
-        const std::uint32_t max_image_count = swapchain_support.capabilities.maxImageCount;
+        const std::uint32_t max_image_count     = swapchain_support.capabilities.maxImageCount;
 
         const auto image_count = max_image_count == 0
                                ? desired_image_count
@@ -362,9 +366,9 @@ private:
             };
 
             if (indices.graphics_family != indices.present_family) {
-                result.imageSharingMode = vk::SharingMode::eConcurrent;
+                result.imageSharingMode      = vk::SharingMode::eConcurrent;
                 result.queueFamilyIndexCount = 2;
-                result.pQueueFamilyIndices = queue_family_indices.data();
+                result.pQueueFamilyIndices   = queue_family_indices.data();
             } else {
                 result.imageSharingMode = vk::SharingMode::eExclusive;
             }
@@ -373,9 +377,9 @@ private:
         });
 
         swapchain_image_format_ = surface_format.format;
-        swapchain_extent_ = extent;
+        swapchain_extent_       = extent;
 
-        swapchain_ = device_.createSwapchainKHR(create_info);
+        swapchain_        = device_.createSwapchainKHR(create_info);
         swapchain_images_ = device_.getSwapchainImagesKHR(swapchain_);
     }
 
@@ -409,8 +413,8 @@ private:
         if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max())
             return capabilities.currentExtent;
 
-        int frame_width;
-        int frame_height;
+        int frame_width  = 0;
+        int frame_height = 0;
 
         glfwGetFramebufferSize(window_, &frame_width, &frame_height);
 
@@ -451,10 +455,10 @@ private:
 
     void create_graphics_pipeline()
     {
-        const auto vertex_shader_bytecode = read_file("resources/shaders/triangle/triangle.vert.spv");
+        const auto vertex_shader_bytecode   = read_file("resources/shaders/triangle/triangle.vert.spv");
         const auto fragment_shader_bytecode = read_file("resources/shaders/triangle/triangle.frag.spv");
 
-        const auto vertex_shader_module = create_shader_module(vertex_shader_bytecode);
+        const auto vertex_shader_module   = create_shader_module(vertex_shader_bytecode);
         const auto fragment_shader_module = create_shader_module(fragment_shader_bytecode);
 
         const vk::PipelineShaderStageCreateInfo vertex_shader_stage_create_info = {
@@ -473,6 +477,75 @@ private:
             vertex_shader_stage_create_info,
             fragment_shader_stage_create_info,
         };
+
+        const vk::PipelineVertexInputStateCreateInfo vertex_input_state_create_info = {
+            .vertexBindingDescriptionCount   = 0,
+            .pVertexBindingDescriptions      = nullptr,
+            .vertexAttributeDescriptionCount = 0,
+            .pVertexAttributeDescriptions    = nullptr,
+        };
+
+        const vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {
+            .topology               = vk::PrimitiveTopology::eTriangleList,
+            .primitiveRestartEnable = VK_FALSE,
+        };
+
+        const vk::Viewport viewport = {
+            .x        = 0.0f,
+            .y        = 0.0f,
+            .width    = static_cast<float>(swapchain_extent_.width),
+            .height   = static_cast<float>(swapchain_extent_.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+
+        const vk::Rect2D scissor = {
+            .offset = { 
+                .x = 0, 
+                .y = 0 
+            },
+            .extent = swapchain_extent_,
+        };
+
+        const vk::PipelineViewportStateCreateInfo viewport_state_create_info = {
+            .viewportCount = 1,
+            .pViewports    = &viewport,
+            .scissorCount  = 1,
+            .pScissors     = &scissor,
+        };
+
+        const vk::PipelineRasterizationStateCreateInfo rasterization_state_create_info = {
+            .depthClampEnable        = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode             = vk::PolygonMode::eFill,
+            .cullMode                = vk::CullModeFlagBits::eBack,
+            .frontFace               = vk::FrontFace::eClockwise,
+            .depthBiasEnable         = VK_FALSE,
+            .lineWidth               = 1.0f,
+        };
+
+        const vk::PipelineMultisampleStateCreateInfo multisample_state_create_info = {
+            .rasterizationSamples = vk::SampleCountFlagBits::e1,
+            .sampleShadingEnable  = VK_FALSE,
+        };
+
+        const vk::PipelineColorBlendAttachmentState color_blend_attachment_state = {
+            .blendEnable    = VK_FALSE,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR
+                            | vk::ColorComponentFlagBits::eG
+                            | vk::ColorComponentFlagBits::eB
+                            | vk::ColorComponentFlagBits::eA,
+        };
+
+        const vk::PipelineColorBlendStateCreateInfo color_blend_state_create_info = {
+            .logicOpEnable   = VK_FALSE,
+            .attachmentCount = 1,
+            .pAttachments    = &color_blend_attachment_state,
+        };
+
+        const vk::PipelineLayoutCreateInfo pipeline_layout_create_info = { };
+
+        pipeline_layout_ = device_.createPipelineLayout(pipeline_layout_create_info);
 
         device_.destroy(vertex_shader_module);
         device_.destroy(fragment_shader_module);
@@ -497,6 +570,8 @@ private:
 
     void cleanup()
     {
+        device_.destroy(pipeline_layout_);
+
         for (auto image_view : swapchain_image_views_)
             device_.destroy(image_view);
 
@@ -524,11 +599,12 @@ private:
     vk::Device device_;
     vk::Queue graphics_queue_;
     vk::Queue present_queue_;
-    vk::Format swapchain_image_format_;
+    vk::Format swapchain_image_format_ = vk::Format::eUndefined;
     vk::Extent2D swapchain_extent_;
     vk::SwapchainKHR swapchain_;
     std::vector<vk::Image> swapchain_images_;
     std::vector<vk::ImageView> swapchain_image_views_;
+    vk::PipelineLayout pipeline_layout_;
 };
 
 int main()
