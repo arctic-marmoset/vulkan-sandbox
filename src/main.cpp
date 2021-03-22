@@ -13,7 +13,6 @@
 #include <set>
 #include <stdexcept>
 #include <string_view>
-#include <vulkan/vulkan_core.h>
 
 struct queue_family_indices {
     std::optional<std::uint32_t> graphics_family;
@@ -581,6 +580,29 @@ private:
 
         pipeline_layout_ = device_.createPipelineLayout(pipeline_layout_create_info);
 
+        const vk::GraphicsPipelineCreateInfo pipeline_create_info = {
+            .stageCount          = 2,
+            .pStages             = shader_stages.data(),
+            .pVertexInputState   = &vertex_input_state_create_info,
+            .pInputAssemblyState = &input_assembly_state_create_info,
+            .pViewportState      = &viewport_state_create_info,
+            .pRasterizationState = &rasterization_state_create_info,
+            .pMultisampleState   = &multisample_state_create_info,
+            .pDepthStencilState  = nullptr,
+            .pColorBlendState    = &color_blend_state_create_info,
+            .pDynamicState       = nullptr,
+            .layout              = pipeline_layout_,
+            .renderPass          = render_pass_,
+            .subpass             = 0,
+        };
+
+        const auto [result, pipeline] = device_.createGraphicsPipeline({ }, pipeline_create_info);
+
+        if (result != vk::Result::eSuccess)
+            throw std::runtime_error("Failed to create graphics pipeline!");
+        
+        graphics_pipeline_ = pipeline;
+
         device_.destroy(vertex_shader_module);
         device_.destroy(fragment_shader_module);
     }
@@ -604,6 +626,7 @@ private:
 
     void cleanup()
     {
+        device_.destroyPipeline(graphics_pipeline_);
         device_.destroy(pipeline_layout_);
         device_.destroy(render_pass_);
 
@@ -641,6 +664,7 @@ private:
     std::vector<vk::ImageView> swapchain_image_views_;
     vk::RenderPass render_pass_;
     vk::PipelineLayout pipeline_layout_;
+    vk::Pipeline graphics_pipeline_;
 };
 
 int main()
