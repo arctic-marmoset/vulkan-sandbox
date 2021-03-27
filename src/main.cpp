@@ -145,6 +145,8 @@ private:
         create_render_pass();
         create_graphics_pipeline();
         create_framebuffers();
+        create_command_pool();
+        create_command_buffers();
     }
 
     void create_instance()
@@ -629,6 +631,64 @@ private:
         }
     }
 
+    void create_command_pool()
+    {
+        const ::queue_family_indices indices = find_queue_families(physical_device_);
+
+        const vk::CommandPoolCreateInfo create_info = {
+            .queueFamilyIndex = indices.graphics_family.value(),
+        };
+
+        command_pool_ = device_.createCommandPool(create_info);
+    }
+
+    void create_command_buffers()
+    {
+        const auto count = static_cast<std::uint32_t>(swapchain_framebuffers_.size());
+
+        const vk::CommandBufferAllocateInfo alloc_info = {
+            .commandPool        = command_pool_,
+            .level              = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = count,
+        };
+
+        command_buffers_ = device_.allocateCommandBuffers(alloc_info);
+
+        for (std::size_t i = 0; i < command_buffers_.size(); ++i) {
+            const auto &command_buffer = command_buffers_[i];
+            const auto &framebuffer = swapchain_framebuffers_[i];
+
+            const vk::CommandBufferBeginInfo begin_info = { };
+            command_buffer.begin(begin_info);
+
+            const std::array color = { 0.0f, 0.0f, 0.0f, 1.0f };
+            const vk::ClearValue clear_color = { color };
+            
+            const vk::RenderPassBeginInfo render_pass_begin_info = {
+                .renderPass      = render_pass_,
+                .framebuffer     = framebuffer,
+                .renderArea      = {
+                    .offset = {
+                        .x = 0,
+                        .y = 0,
+                    },
+                    .extent = swapchain_extent_,
+                },
+                .clearValueCount = 1,
+                .pClearValues    = &clear_color,
+            };
+
+            command_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
+            {
+                command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_);
+                command_buffer.draw(3, 1, 0, 0);
+            }
+            command_buffer.endRenderPass();
+
+            command_buffer.end();
+        }
+    }
+
     vk::ShaderModule create_shader_module(const std::vector<std::byte> &code)
     {
         const vk::ShaderModuleCreateInfo create_info = {
@@ -648,6 +708,8 @@ private:
 
     void cleanup()
     {
+        device_.destroy(command_pool_);
+
         for (auto framebuffer : swapchain_framebuffers_)
             device_.destroy(framebuffer);
 
@@ -692,6 +754,8 @@ private:
     vk::PipelineLayout pipeline_layout_;
     vk::Pipeline graphics_pipeline_;
     std::vector<vk::Framebuffer> swapchain_framebuffers_;
+    vk::CommandPool command_pool_;
+    std::vector<vk::CommandBuffer> command_buffers_;
 };
 
 int main()
