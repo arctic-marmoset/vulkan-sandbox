@@ -141,7 +141,7 @@ target_link_libraries(renderer
     PRIVATE
         ${CMAKE_DL_LIBS}
         glfw
-        vulkan
+        Vulkan::Vulkan
 )
 
 target_compile_options(renderer PRIVATE ${SANDBOX_WARN_FLAGS})

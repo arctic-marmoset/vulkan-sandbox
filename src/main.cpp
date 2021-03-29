@@ -4,7 +4,9 @@
 #include <vulkan/vulkan.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -147,6 +149,7 @@ private:
         create_framebuffers();
         create_command_pool();
         create_command_buffers();
+        create_sync_objects();
     }
 
     void create_instance()
@@ -481,11 +484,22 @@ private:
             .pColorAttachments    = &color_attachment_reference,
         };
 
+        const vk::SubpassDependency dependency = {
+            .srcSubpass    = VK_SUBPASS_EXTERNAL,
+            .dstSubpass    = 0,
+            .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            .srcAccessMask = vk::AccessFlagBits::eNoneKHR,
+            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+        };
+
         const vk::RenderPassCreateInfo render_pass_create_info = {
             .attachmentCount = 1,
             .pAttachments    = &color_attachment,
             .subpassCount    = 1,
             .pSubpasses      = &subpass_description,
+            .dependencyCount = 1,
+            .pDependencies   = &dependency,
         };
 
         render_pass_ = device_.createRenderPass(render_pass_create_info);
@@ -539,8 +553,8 @@ private:
 
         const vk::Rect2D scissor = {
             .offset = { 
-                .x = 0, 
-                .y = 0 
+                .x  = 0, 
+                .y  = 0 
             },
             .extent = swapchain_extent_,
         };
@@ -668,11 +682,11 @@ private:
                 .renderPass      = render_pass_,
                 .framebuffer     = framebuffer,
                 .renderArea      = {
-                    .offset = {
-                        .x = 0,
-                        .y = 0,
+                    .offset      = {
+                        .x       = 0,
+                        .y       = 0,
                     },
-                    .extent = swapchain_extent_,
+                    .extent      = swapchain_extent_,
                 },
                 .clearValueCount = 1,
                 .pClearValues    = &clear_color,
@@ -686,6 +700,24 @@ private:
             command_buffer.endRenderPass();
 
             command_buffer.end();
+        }
+    }
+
+    void create_sync_objects()
+    {
+        image_available_semaphores_.reserve(max_frames_in_flight_);
+        render_finished_semaphores_.reserve(max_frames_in_flight_);
+        in_flight_fences_.reserve(max_frames_in_flight_);
+        images_in_flight_.resize(swapchain_images_.size());
+
+        const vk::FenceCreateInfo fence_info = {
+            .flags = vk::FenceCreateFlagBits::eSignaled,
+        };
+
+        for (std::uint32_t i = 0; i < max_frames_in_flight_; ++i) {
+            image_available_semaphores_.push_back(device_.createSemaphore({ }));
+            render_finished_semaphores_.push_back(device_.createSemaphore({ }));
+            in_flight_fences_.push_back(device_.createFence(fence_info));
         }
     }
 
@@ -703,11 +735,83 @@ private:
     {
         while (!glfwWindowShouldClose(window_)) {
             glfwPollEvents();
+            draw_frame();
         }
+
+        device_.waitIdle();
+    }
+
+    void draw_frame()
+    {
+        [[maybe_unused]] 
+        auto wait_result = device_.waitForFences(1, 
+                                                 &in_flight_fences_[current_frame_], 
+                                                 VK_TRUE, 
+                                                 std::numeric_limits<std::uint64_t>::max());
+
+        const auto [result, image_index] = device_.acquireNextImageKHR(swapchain_, 
+                                                                       std::numeric_limits<std::uint64_t>::max(), 
+                                                                       image_available_semaphores_[current_frame_]);
+
+        if (images_in_flight_[image_index]) {
+            [[maybe_unused]] 
+            auto unused = device_.waitForFences(1, 
+                                                &images_in_flight_[image_index],
+                                                VK_TRUE,
+                                                std::numeric_limits<std::uint64_t>::max());
+        }
+
+        images_in_flight_[image_index] = in_flight_fences_[current_frame_];
+
+        const std::array wait_semaphores = { image_available_semaphores_[current_frame_] };
+
+        const auto wait_stages = std::to_array<vk::PipelineStageFlags>({ 
+            vk::PipelineStageFlagBits::eColorAttachmentOutput
+        });
+
+        const std::array signal_semaphores = { render_finished_semaphores_[current_frame_] };
+
+        const vk::SubmitInfo submit_info = {
+            .waitSemaphoreCount   = static_cast<std::uint32_t>(wait_semaphores.size()),
+            .pWaitSemaphores      = wait_semaphores.data(),
+            .pWaitDstStageMask    = wait_stages.data(),
+            .commandBufferCount   = 1,
+            .pCommandBuffers      = &command_buffers_[image_index],
+            .signalSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
+            .pSignalSemaphores    = signal_semaphores.data(),
+        };
+
+        [[maybe_unused]]
+        auto reset_result = device_.resetFences(1, &in_flight_fences_[current_frame_]);
+    
+        graphics_queue_.submit(submit_info, in_flight_fences_[current_frame_]);
+
+        const std::array swapchains = {
+            swapchain_,
+        };
+
+        const vk::PresentInfoKHR present_info = {
+            .waitSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
+            .pWaitSemaphores    = signal_semaphores.data(),
+            .swapchainCount     = static_cast<std::uint32_t>(swapchains.size()),
+            .pSwapchains        = swapchains.data(),
+            .pImageIndices      = &image_index,
+        };
+
+        [[maybe_unused]]
+        auto present_result = present_queue_.presentKHR(present_info);
+
+        current_frame_ = (current_frame_ + 1) % max_frames_in_flight_;
     }
 
     void cleanup()
     {
+        for (std::uint32_t i = 0; i < max_frames_in_flight_; ++i) {
+            device_.destroy(image_available_semaphores_[i]);
+            device_.destroy(render_finished_semaphores_[i]);
+            device_.destroy(in_flight_fences_[i]);
+        }
+
         device_.destroy(command_pool_);
 
         for (auto framebuffer : swapchain_framebuffers_)
@@ -735,6 +839,8 @@ private:
     }
 
 private:
+    std::uint32_t max_frames_in_flight_ = 2;
+    std::size_t current_frame_ = 0;
     GLFWwindow *window_ = nullptr;
     vk::Instance instance_;
 #ifndef NDEBUG
@@ -756,6 +862,10 @@ private:
     std::vector<vk::Framebuffer> swapchain_framebuffers_;
     vk::CommandPool command_pool_;
     std::vector<vk::CommandBuffer> command_buffers_;
+    std::vector<vk::Semaphore> image_available_semaphores_;
+    std::vector<vk::Semaphore> render_finished_semaphores_;
+    std::vector<vk::Fence> in_flight_fences_;
+    std::vector<vk::Fence> images_in_flight_;
 };
 
 int main()
