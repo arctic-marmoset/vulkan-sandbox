@@ -112,8 +112,22 @@ void init_debug_messenger_create_info(vk::DebugUtilsMessengerCreateInfoEXT &crea
     };
 }
 
-class application
+template<typename T>
+struct self_typeable
 {
+    using self_type = T;
+    using self_pointer = self_type *;
+    using const_self_pointer = const self_type *;
+};
+
+class application : private self_typeable<application>
+{
+public:
+    static constexpr std::array dynamic_states = {
+        vk::DynamicState::eScissor,
+        vk::DynamicState::eViewport,
+    };
+
 public:
     void run()
     {
@@ -130,9 +144,14 @@ private:
             throw std::runtime_error("Failed to initialize GLFW!");
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         window_ = glfwCreateWindow(window_width, window_height, "Vulkan Renderer", nullptr, nullptr);
+
+        if (!window_)
+            throw std::runtime_error("Failed to create window!");
+
+        glfwSetWindowUserPointer(window_, this);
+        glfwSetFramebufferSizeCallback(window_, framebuffer_size_callback);
     }
 
     void init_vulkan()
@@ -251,18 +270,6 @@ private:
         return indices.complete()
             && supports_extensions
             && swapchain_adequate;
-    }
-
-    bool device_supports_extensions(const vk::PhysicalDevice &device)
-    {
-        auto extensions = device.enumerateDeviceExtensionProperties();
-        std::ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
-
-        const auto name_projection = [](const vk::ExtensionProperties &extension) {
-            return static_cast<std::string_view>(extension.extensionName);
-        };
-
-        return std::ranges::includes(extensions, device_extensions, { }, name_projection);
     }
 
     ::queue_family_indices find_queue_families(const vk::PhysicalDevice &device)
@@ -391,31 +398,6 @@ private:
         swapchain_images_ = device_.getSwapchainImagesKHR(swapchain_);
     }
 
-    vk::SurfaceFormatKHR select_swap_surface_format(const std::vector<vk::SurfaceFormatKHR> &surface_formats)
-    {
-        const auto candidate = std::ranges::find_if(surface_formats, [](const vk::SurfaceFormatKHR &surface_format) {
-            return surface_format.format == vk::Format::eB8G8R8A8Srgb
-                && surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
-        });
-
-        if (candidate == surface_formats.end())
-            return surface_formats.front();
-
-        return *candidate;
-    }
-
-    vk::PresentModeKHR select_swap_present_mode(const std::vector<vk::PresentModeKHR> &present_modes)
-    {
-        const auto candidate = std::ranges::find_if(present_modes, [](const vk::PresentModeKHR &present_mode) {
-            return present_mode == vk::PresentModeKHR::eMailbox;
-        });
-
-        if (candidate == present_modes.end())
-            return vk::PresentModeKHR::eFifo;
-
-        return *candidate;
-    }
-
     vk::Extent2D select_swap_extent(const vk::SurfaceCapabilitiesKHR &capabilities)
     {
         if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max())
@@ -440,9 +422,11 @@ private:
 
     void create_image_views()
     {
-        swapchain_image_views_.reserve(swapchain_images_.size());
+        swapchain_image_views_.resize(swapchain_images_.size());
 
-        for (const auto &image : swapchain_images_) {
+        for (std::size_t i = 0; i < swapchain_images_.size(); ++i) {
+            const auto &image = swapchain_images_[i];
+
             const vk::ImageViewCreateInfo create_info = {
                 .image            = image,
                 .viewType         = vk::ImageViewType::e2D,
@@ -456,8 +440,7 @@ private:
                 },
             };
 
-            auto image_view = device_.createImageView(create_info);
-            swapchain_image_views_.push_back(image_view);
+            swapchain_image_views_[i] = device_.createImageView(create_info);
         }
     }
 
@@ -542,28 +525,11 @@ private:
             .primitiveRestartEnable = VK_FALSE,
         };
 
-        const vk::Viewport viewport = {
-            .x        = 0.0f,
-            .y        = 0.0f,
-            .width    = static_cast<float>(swapchain_extent_.width),
-            .height   = static_cast<float>(swapchain_extent_.height),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-
-        const vk::Rect2D scissor = {
-            .offset = { 
-                .x  = 0, 
-                .y  = 0 
-            },
-            .extent = swapchain_extent_,
-        };
-
         const vk::PipelineViewportStateCreateInfo viewport_state_create_info = {
             .viewportCount = 1,
-            .pViewports    = &viewport,
+            .pViewports    = nullptr, // Dynamic
             .scissorCount  = 1,
-            .pScissors     = &scissor,
+            .pScissors     = nullptr, // Dynamic
         };
 
         const vk::PipelineRasterizationStateCreateInfo rasterization_state_create_info = {
@@ -599,6 +565,11 @@ private:
 
         pipeline_layout_ = device_.createPipelineLayout(pipeline_layout_create_info);
 
+        const vk::PipelineDynamicStateCreateInfo dynamic_state_create_info = {
+            .dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size()),
+            .pDynamicStates    = dynamic_states.data(),
+        };
+
         const vk::GraphicsPipelineCreateInfo pipeline_create_info = {
             .stageCount          = 2,
             .pStages             = shader_stages.data(),
@@ -609,7 +580,7 @@ private:
             .pMultisampleState   = &multisample_state_create_info,
             .pDepthStencilState  = nullptr,
             .pColorBlendState    = &color_blend_state_create_info,
-            .pDynamicState       = nullptr,
+            .pDynamicState       = &dynamic_state_create_info,
             .layout              = pipeline_layout_,
             .renderPass          = render_pass_,
             .subpass             = 0,
@@ -628,9 +599,11 @@ private:
 
     void create_framebuffers()
     {
-        swapchain_framebuffers_.reserve(swapchain_image_views_.size());
+        swapchain_framebuffers_.resize(swapchain_image_views_.size());
 
-        for (const auto &image_view : swapchain_image_views_) {
+        for (std::size_t i = 0; i < swapchain_image_views_.size(); ++i) {
+            const auto &image_view = swapchain_image_views_[i];
+
             const vk::FramebufferCreateInfo create_info = {
                 .renderPass      = render_pass_,
                 .attachmentCount = 1,
@@ -640,8 +613,7 @@ private:
                 .layers          = 1,
             };
 
-            auto framebuffer = device_.createFramebuffer(create_info);
-            swapchain_framebuffers_.push_back(framebuffer);
+            swapchain_framebuffers_[i] = device_.createFramebuffer(create_info);
         }
     }
 
@@ -692,9 +664,29 @@ private:
                 .pClearValues    = &clear_color,
             };
 
+
+            const vk::Viewport viewport = {
+                .x        = 0.0f,
+                .y        = 0.0f,
+                .width    = static_cast<float>(swapchain_extent_.width),
+                .height   = static_cast<float>(swapchain_extent_.height),
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f,
+            };
+
+            const vk::Rect2D scissor = {
+                .offset = { 
+                    .x  = 0, 
+                    .y  = 0 
+                },
+                .extent = swapchain_extent_,
+            };
+
             command_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
             {
                 command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_);
+                command_buffer.setViewport(0, 1, &viewport);
+                command_buffer.setScissor(0, 1, &scissor);
                 command_buffer.draw(3, 1, 0, 0);
             }
             command_buffer.endRenderPass();
@@ -749,9 +741,27 @@ private:
                                                  VK_TRUE, 
                                                  std::numeric_limits<std::uint64_t>::max());
 
-        const auto [result, image_index] = device_.acquireNextImageKHR(swapchain_, 
-                                                                       std::numeric_limits<std::uint64_t>::max(), 
-                                                                       image_available_semaphores_[current_frame_]);
+        std::uint32_t image_index = 0;
+
+        // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
+        const auto acquire_next_image_result = static_cast<vk::Result>(
+            vkAcquireNextImageKHR(device_, 
+                                  swapchain_, 
+                                  std::numeric_limits<std::uint64_t>::max(), 
+                                  image_available_semaphores_[current_frame_], 
+                                  nullptr, 
+                                  &image_index));
+
+        switch (acquire_next_image_result) {
+        case vk::Result::eSuccess:
+        case vk::Result::eSuboptimalKHR:
+            break;
+        case vk::Result::eErrorOutOfDateKHR:
+            recreate_swapchain();
+            return;
+        default:
+            throw std::runtime_error("Failed to acquire swapchain image!");
+        }
 
         if (images_in_flight_[image_index]) {
             [[maybe_unused]] 
@@ -798,14 +808,56 @@ private:
             .pImageIndices      = &image_index,
         };
 
-        [[maybe_unused]]
-        auto present_result = present_queue_.presentKHR(present_info);
+        const auto c_present_info = static_cast<VkPresentInfoKHR>(present_info);
+
+        // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
+        const auto present_result = static_cast<vk::Result>(vkQueuePresentKHR(present_queue_, &c_present_info));
+
+        if (present_result == vk::Result::eSuboptimalKHR 
+            || present_result == vk::Result::eErrorOutOfDateKHR 
+            || framebuffer_resized_) {
+                recreate_swapchain();
+        } else if (present_result != vk::Result::eSuccess) {
+            throw std::runtime_error("Failed to present swapchain image!");
+        }
 
         current_frame_ = (current_frame_ + 1) % max_frames_in_flight_;
     }
 
+    void recreate_swapchain()
+    {
+        framebuffer_resized_ = false;
+
+        device_.waitIdle();
+
+        cleanup_swapchain();
+
+        create_swapchain();
+        create_image_views();
+        create_render_pass();
+        create_framebuffers();
+        create_command_buffers();
+    }
+
+    void cleanup_swapchain()
+    {
+        for (auto framebuffer : swapchain_framebuffers_)
+            device_.destroy(framebuffer);
+
+        device_.freeCommandBuffers(command_pool_, command_buffers_);
+
+        device_.destroy(render_pass_);
+
+        for (auto image_view : swapchain_image_views_)
+            device_.destroy(image_view);
+
+        device_.destroy(swapchain_);
+    }
+
     void cleanup()
     {
+        cleanup_swapchain();
+
         for (std::uint32_t i = 0; i < max_frames_in_flight_; ++i) {
             device_.destroy(image_available_semaphores_[i]);
             device_.destroy(render_finished_semaphores_[i]);
@@ -814,17 +866,9 @@ private:
 
         device_.destroy(command_pool_);
 
-        for (auto framebuffer : swapchain_framebuffers_)
-            device_.destroy(framebuffer);
-
-        device_.destroyPipeline(graphics_pipeline_);
+        device_.destroy(graphics_pipeline_);
         device_.destroy(pipeline_layout_);
-        device_.destroy(render_pass_);
 
-        for (auto image_view : swapchain_image_views_)
-            device_.destroy(image_view);
-
-        device_.destroy(swapchain_);
         device_.destroy();
 
         instance_.destroy(surface_);
@@ -838,7 +882,51 @@ private:
         glfwTerminate();
     }
 
+    static void framebuffer_size_callback(GLFWwindow *window, [[maybe_unused]] int width, [[maybe_unused]] int height)
+    {
+        auto *self = static_cast<self_pointer>(glfwGetWindowUserPointer(window));
+        self->framebuffer_resized_ = true;
+    }
+
+    static bool device_supports_extensions(const vk::PhysicalDevice &device)
+    {
+        auto extensions = device.enumerateDeviceExtensionProperties();
+        std::ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
+
+        const auto name_projection = [](const vk::ExtensionProperties &extension) {
+            return static_cast<std::string_view>(extension.extensionName);
+        };
+
+        return std::ranges::includes(extensions, device_extensions, { }, name_projection);
+    }
+
+    static vk::SurfaceFormatKHR select_swap_surface_format(const std::vector<vk::SurfaceFormatKHR> &surface_formats)
+    {
+        const auto candidate = std::ranges::find_if(surface_formats, [](const vk::SurfaceFormatKHR &surface_format) {
+            return surface_format.format == vk::Format::eB8G8R8A8Srgb
+                && surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+        });
+
+        if (candidate == surface_formats.end())
+            return surface_formats.front();
+
+        return *candidate;
+    }
+
+    static vk::PresentModeKHR select_swap_present_mode(const std::vector<vk::PresentModeKHR> &present_modes)
+    {
+        const auto candidate = std::ranges::find_if(present_modes, [](const vk::PresentModeKHR &present_mode) {
+            return present_mode == vk::PresentModeKHR::eMailbox;
+        });
+
+        if (candidate == present_modes.end())
+            return vk::PresentModeKHR::eFifo;
+
+        return *candidate;
+    }
+
 private:
+    bool framebuffer_resized_ = false;
     std::uint32_t max_frames_in_flight_ = 2;
     std::size_t current_frame_ = 0;
     GLFWwindow *window_ = nullptr;
