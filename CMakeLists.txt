@@ -1,9 +1,18 @@
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(VulkanSandbox)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS FALSE)
+
+string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPPER)
+if(CMAKE_BUILD_TYPE_UPPER STREQUAL "RELEASE")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT IPO_IS_SUPPORTED)
+    if(IPO_IS_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+endif()
 
 option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" TRUE)
 option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
