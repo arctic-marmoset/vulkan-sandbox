@@ -5,6 +5,14 @@
 #include <fstream>
 #include <vector>
 
+template<typename T>
+struct self_typeable
+{
+    using self_type = T;
+    using self_pointer = self_type *;
+    using const_self_pointer = const self_type *;
+};
+
 inline std::vector<std::byte> read_file(const char *filepath)
 {
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);

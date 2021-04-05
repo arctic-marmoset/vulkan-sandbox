@@ -1,12 +1,16 @@
 #include "utility.hpp"
 
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
+#include <bitset>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -15,6 +19,38 @@
 #include <set>
 #include <stdexcept>
 #include <string_view>
+
+struct vertex {
+    glm::vec2 position;
+    glm::vec3 color;
+
+    static constexpr vk::VertexInputBindingDescription binding_description()
+    {
+        return {
+            .binding   = 0,
+            .stride    = sizeof(::vertex),
+            .inputRate = vk::VertexInputRate::eVertex,
+        };
+    }
+
+    static constexpr auto attribute_descriptions()
+    {
+        return std::to_array<vk::VertexInputAttributeDescription>({
+            {
+                .location = 0,
+                .binding  = 0,
+                .format   = vk::Format::eR32G32Sfloat,
+                .offset   = offsetof(::vertex, position),
+            },
+            {
+                .location = 1,
+                .binding  = 0,
+                .format   = vk::Format::eR32G32B32Sfloat,
+                .offset   = offsetof(::vertex, color),
+            },
+        });
+    }
+};
 
 struct queue_family_indices {
     std::optional<std::uint32_t> graphics_family;
@@ -50,6 +86,12 @@ constexpr bool debug_mode = true;
 #else
 constexpr bool debug_mode = false;
 #endif
+
+constexpr auto triangle_vertices = std::to_array<::vertex>({
+    { {  0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
+    { {  0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f } },
+    { { -0.5f,  0.5f }, { 0.0f, 0.0f, 1.0f } },
+});
 
 VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                                                 [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT message_type,
@@ -112,14 +154,6 @@ void init_debug_messenger_create_info(vk::DebugUtilsMessengerCreateInfoEXT &crea
     };
 }
 
-template<typename T>
-struct self_typeable
-{
-    using self_type = T;
-    using self_pointer = self_type *;
-    using const_self_pointer = const self_type *;
-};
-
 class application : private self_typeable<application>
 {
 public:
@@ -167,6 +201,7 @@ private:
         create_graphics_pipeline();
         create_framebuffers();
         create_command_pool();
+        create_vertex_buffer();
         create_command_buffers();
         create_sync_objects();
     }
@@ -422,11 +457,9 @@ private:
 
     void create_image_views()
     {
-        swapchain_image_views_.resize(swapchain_images_.size());
+        swapchain_image_views_.reserve(swapchain_images_.size());
 
-        for (std::size_t i = 0; i < swapchain_images_.size(); ++i) {
-            const auto &image = swapchain_images_[i];
-
+        for (const auto &image : swapchain_images_) {
             const vk::ImageViewCreateInfo create_info = {
                 .image            = image,
                 .viewType         = vk::ImageViewType::e2D,
@@ -440,7 +473,8 @@ private:
                 },
             };
 
-            swapchain_image_views_[i] = device_.createImageView(create_info);
+            const auto image_view = device_.createImageView(create_info);
+            swapchain_image_views_.push_back(image_view);
         }
     }
 
@@ -513,11 +547,14 @@ private:
             fragment_shader_stage_create_info,
         };
 
+        const auto binding_description    = ::vertex::binding_description();
+        const auto attribute_descriptions = ::vertex::attribute_descriptions();
+
         const vk::PipelineVertexInputStateCreateInfo vertex_input_state_create_info = {
-            .vertexBindingDescriptionCount   = 0,
-            .pVertexBindingDescriptions      = nullptr,
-            .vertexAttributeDescriptionCount = 0,
-            .pVertexAttributeDescriptions    = nullptr,
+            .vertexBindingDescriptionCount   = 1,
+            .pVertexBindingDescriptions      = &binding_description,
+            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attribute_descriptions.size()),
+            .pVertexAttributeDescriptions    = attribute_descriptions.data(),
         };
 
         const vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {
@@ -590,7 +627,7 @@ private:
 
         if (result != vk::Result::eSuccess)
             throw std::runtime_error("Failed to create graphics pipeline!");
-        
+
         graphics_pipeline_ = pipeline;
 
         device_.destroy(vertex_shader_module);
@@ -599,11 +636,9 @@ private:
 
     void create_framebuffers()
     {
-        swapchain_framebuffers_.resize(swapchain_image_views_.size());
+        swapchain_framebuffers_.reserve(swapchain_image_views_.size());
 
-        for (std::size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-            const auto &image_view = swapchain_image_views_[i];
-
+        for (const auto &image_view : swapchain_image_views_) {
             const vk::FramebufferCreateInfo create_info = {
                 .renderPass      = render_pass_,
                 .attachmentCount = 1,
@@ -613,7 +648,8 @@ private:
                 .layers          = 1,
             };
 
-            swapchain_framebuffers_[i] = device_.createFramebuffer(create_info);
+            const auto framebuffer = device_.createFramebuffer(create_info);
+            swapchain_framebuffers_.push_back(framebuffer);
         }
     }
 
@@ -626,6 +662,64 @@ private:
         };
 
         command_pool_ = device_.createCommandPool(create_info);
+    }
+
+    void create_vertex_buffer()
+    {
+        constexpr auto triangle_vertices_size = sizeof(decltype(triangle_vertices)::value_type) 
+                                              * triangle_vertices.size();
+
+        const vk::BufferCreateInfo buffer_info = {
+            .size        = static_cast<vk::DeviceSize>(triangle_vertices_size),
+            .usage       = vk::BufferUsageFlagBits::eVertexBuffer,
+            .sharingMode = vk::SharingMode::eExclusive,
+        };
+
+        vertex_buffer_ = device_.createBuffer(buffer_info);
+
+        const vk::MemoryRequirements memory_requirements = device_.getBufferMemoryRequirements(vertex_buffer_);
+
+        const std::uint32_t memory_type_index =
+                find_memory_type(memory_requirements.memoryTypeBits,
+                                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+        const vk::MemoryAllocateInfo allocate_info = {
+            .allocationSize  = memory_requirements.size,
+            .memoryTypeIndex = memory_type_index,
+        };
+
+        vertex_buffer_memory_ = device_.allocateMemory(allocate_info);
+        device_.bindBufferMemory(vertex_buffer_, vertex_buffer_memory_, 0);
+
+        if (void *data = device_.mapMemory(vertex_buffer_memory_, 0, buffer_info.size)) {
+            std::memcpy(data, triangle_vertices.data(), buffer_info.size);
+        }
+        device_.unmapMemory(vertex_buffer_memory_);
+    }
+
+    std::uint32_t find_memory_type(std::uint32_t type_filter, vk::MemoryPropertyFlags properties)
+    {
+        constexpr auto filter_bitcount = std::numeric_limits<decltype(type_filter)>::digits;
+        const std::bitset<filter_bitcount> eligible_types(type_filter);
+
+        constexpr auto type_present = [](std::bitset<filter_bitcount> types, std::uint32_t index) {
+            return types.test(index);
+        };
+
+        constexpr auto properties_present = [](vk::MemoryPropertyFlags superset, vk::MemoryPropertyFlags subset) {
+            return (superset & subset) == subset;
+        };
+
+        const vk::PhysicalDeviceMemoryProperties memory_properties = physical_device_.getMemoryProperties();
+        for (std::uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
+            const auto candidate_properties = memory_properties.memoryTypes[i].propertyFlags;
+            if (type_present(eligible_types, i)
+                && properties_present(candidate_properties, properties)) {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("Failed to find a suitable memory type!");
     }
 
     void create_command_buffers()
@@ -649,7 +743,7 @@ private:
 
             const std::array color = { 0.0f, 0.0f, 0.0f, 1.0f };
             const vk::ClearValue clear_color = { color };
-            
+
             const vk::RenderPassBeginInfo render_pass_begin_info = {
                 .renderPass      = render_pass_,
                 .framebuffer     = framebuffer,
@@ -675,19 +769,28 @@ private:
             };
 
             const vk::Rect2D scissor = {
-                .offset = { 
-                    .x  = 0, 
-                    .y  = 0 
+                .offset = {
+                    .x  = 0,
+                    .y  = 0
                 },
                 .extent = swapchain_extent_,
             };
+
+            const std::array vertex_buffers = {
+                vertex_buffer_,
+            };
+
+            const auto offsets = std::to_array<vk::DeviceSize>({
+                0,
+            });
 
             command_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
             {
                 command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_);
                 command_buffer.setViewport(0, 1, &viewport);
                 command_buffer.setScissor(0, 1, &scissor);
-                command_buffer.draw(3, 1, 0, 0);
+                command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
+                command_buffer.draw(static_cast<std::uint32_t>(triangle_vertices.size()), 1, 0, 0);
             }
             command_buffer.endRenderPass();
 
@@ -735,21 +838,21 @@ private:
 
     void draw_frame()
     {
-        [[maybe_unused]] 
-        auto wait_result = device_.waitForFences(1, 
-                                                 &in_flight_fences_[current_frame_], 
-                                                 VK_TRUE, 
+        [[maybe_unused]]
+        auto wait_result = device_.waitForFences(1,
+                                                 &in_flight_fences_[current_frame_],
+                                                 VK_TRUE,
                                                  std::numeric_limits<std::uint64_t>::max());
 
         std::uint32_t image_index = 0;
 
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
         const auto acquire_next_image_result = static_cast<vk::Result>(
-            vkAcquireNextImageKHR(device_, 
-                                  swapchain_, 
-                                  std::numeric_limits<std::uint64_t>::max(), 
-                                  image_available_semaphores_[current_frame_], 
-                                  nullptr, 
+            vkAcquireNextImageKHR(device_,
+                                  swapchain_,
+                                  std::numeric_limits<std::uint64_t>::max(),
+                                  image_available_semaphores_[current_frame_],
+                                  nullptr,
                                   &image_index));
 
         switch (acquire_next_image_result) {
@@ -764,8 +867,8 @@ private:
         }
 
         if (images_in_flight_[image_index]) {
-            [[maybe_unused]] 
-            auto unused = device_.waitForFences(1, 
+            [[maybe_unused]]
+            auto unused = device_.waitForFences(1,
                                                 &images_in_flight_[image_index],
                                                 VK_TRUE,
                                                 std::numeric_limits<std::uint64_t>::max());
@@ -775,7 +878,7 @@ private:
 
         const std::array wait_semaphores = { image_available_semaphores_[current_frame_] };
 
-        const auto wait_stages = std::to_array<vk::PipelineStageFlags>({ 
+        const auto wait_stages = std::to_array<vk::PipelineStageFlags>({
             vk::PipelineStageFlagBits::eColorAttachmentOutput
         });
 
@@ -793,7 +896,7 @@ private:
 
         [[maybe_unused]]
         auto reset_result = device_.resetFences(1, &in_flight_fences_[current_frame_]);
-    
+
         graphics_queue_.submit(submit_info, in_flight_fences_[current_frame_]);
 
         const std::array swapchains = {
@@ -813,8 +916,8 @@ private:
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
         const auto present_result = static_cast<vk::Result>(vkQueuePresentKHR(present_queue_, &c_present_info));
 
-        if (present_result == vk::Result::eSuboptimalKHR 
-            || present_result == vk::Result::eErrorOutOfDateKHR 
+        if (present_result == vk::Result::eSuboptimalKHR
+            || present_result == vk::Result::eErrorOutOfDateKHR
             || framebuffer_resized_) {
                 recreate_swapchain();
         } else if (present_result != vk::Result::eSuccess) {
@@ -844,12 +947,17 @@ private:
         for (auto framebuffer : swapchain_framebuffers_)
             device_.destroy(framebuffer);
 
+        swapchain_framebuffers_.clear();
+
         device_.freeCommandBuffers(command_pool_, command_buffers_);
+        command_buffers_.clear();
 
         device_.destroy(render_pass_);
 
         for (auto image_view : swapchain_image_views_)
             device_.destroy(image_view);
+
+        swapchain_image_views_.clear();
 
         device_.destroy(swapchain_);
     }
@@ -857,6 +965,9 @@ private:
     void cleanup()
     {
         cleanup_swapchain();
+
+        device_.destroy(vertex_buffer_);
+        device_.free(vertex_buffer_memory_);
 
         for (std::uint32_t i = 0; i < max_frames_in_flight_; ++i) {
             device_.destroy(image_available_semaphores_[i]);
@@ -949,6 +1060,8 @@ private:
     vk::Pipeline graphics_pipeline_;
     std::vector<vk::Framebuffer> swapchain_framebuffers_;
     vk::CommandPool command_pool_;
+    vk::Buffer vertex_buffer_;
+    vk::DeviceMemory vertex_buffer_memory_;
     std::vector<vk::CommandBuffer> command_buffers_;
     std::vector<vk::Semaphore> image_available_semaphores_;
     std::vector<vk::Semaphore> render_finished_semaphores_;
