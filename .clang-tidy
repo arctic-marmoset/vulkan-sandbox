@@ -3,6 +3,7 @@ Checks: >
     -google*,
     -fuchsia*,
     -llvm*,
+    -altera*,
     -hicpp-braces-around-statements,
     -hicpp-uppercase-literal-suffix,
     -modernize-use-trailing-return-type,

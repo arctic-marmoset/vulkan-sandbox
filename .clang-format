@@ -1,5 +1,5 @@
 AccessModifierOffset: -4
-AlignConsecutiveAssignments: true
+AlignConsecutiveAssignments: Consecutive
 AlignOperands: AlignAfterOperator
 AllowShortBlocksOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: None
