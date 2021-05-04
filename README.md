@@ -15,10 +15,10 @@ during the configure stage.
 | Dependency                                 | Minimum Version | Version Used by Me |
 | ------------------------------------------ | --------------- | ------------------ |
 | A C++ compiler with C++20 support          | `-`             | `11.1.0 (clang)`   |
-| [CMake](https://cmake.org/download/)       | `3.0.0`         | `3.20.0`           |
+| [CMake](https://cmake.org/download/)       | `3.9.0`         | `3.20.2`           |
 | [GLSLC](https://github.com/google/shaderc) | `-`             | `2020.5`           |
-| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.0`           | `1.2.173`          |
-| [GLFW](https://www.glfw.org/)              | `3.0.0`         | `3.3.3 (glfw-x11)` |
+| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.0`           | `1.2.177`          |
+| [GLFW](https://www.glfw.org/)              | `3.0.0`         | `3.3.4 (glfw-x11)` |
 
 # Progress Preview
 

@@ -8,6 +8,7 @@ BasedOnStyle: LLVM
 BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeBraces: Linux
 ColumnLimit: 120
+Cpp11BracedListStyle: false
 IndentCaseLabels: false
 IndentWidth: 4
 SpaceInEmptyBlock: true

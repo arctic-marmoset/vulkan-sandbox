@@ -42,6 +42,10 @@ constexpr auto triangle_vertices = std::to_array<::vertex>({
     { { -0.5f,  0.5f }, { 0.0f, 0.0f, 1.0f } },
 });
 
+constexpr auto triangle_indices = std::to_array<std::uint16_t>({
+    0, 1, 2,
+});
+
 VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                                                 [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT message_type,
                                                 const VkDebugUtilsMessengerCallbackDataEXT *data,
@@ -151,6 +155,7 @@ private:
         create_framebuffers();
         create_command_pool();
         create_vertex_buffer();
+        create_index_buffer();
         create_command_buffers();
         create_sync_objects();
     }
@@ -652,7 +657,8 @@ private:
         };
 
         vk::CommandBuffer command_buffer;
-        device_.allocateCommandBuffers(&allocate_info, &command_buffer);
+        [[maybe_unused]]
+        auto unused = device_.allocateCommandBuffers(&allocate_info, &command_buffer);
 
         const vk::CommandBufferBeginInfo begin_info = {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
@@ -705,6 +711,35 @@ private:
                       vertex_buffer_memory_);
 
         copy_buffer(staging_buffer, vertex_buffer_, triangle_vertices_size);
+        device_.destroy(staging_buffer);
+        device_.free(staging_buffer_memory);
+    }
+
+    void create_index_buffer()
+    {
+        constexpr auto triangle_indices_size =
+            static_cast<vk::DeviceSize>(sizeof(decltype(triangle_indices)::value_type) * triangle_indices.size());
+
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_buffer_memory;
+        create_buffer(triangle_indices_size,
+                      vk::BufferUsageFlagBits::eTransferSrc,
+                      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                      staging_buffer,
+                      staging_buffer_memory);
+
+        if (void *data = device_.mapMemory(staging_buffer_memory, 0, triangle_indices_size)) {
+            std::memcpy(data, triangle_indices.data(), triangle_indices_size);
+            device_.unmapMemory(staging_buffer_memory);
+        }
+
+        create_buffer(triangle_indices_size,
+                      vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+                      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                      index_buffer_,
+                      index_buffer_memory_);
+
+        copy_buffer(staging_buffer, index_buffer_, triangle_indices_size);
         device_.destroy(staging_buffer);
         device_.free(staging_buffer_memory);
     }
@@ -801,7 +836,8 @@ private:
                 command_buffer.setViewport(0, 1, &viewport);
                 command_buffer.setScissor(0, 1, &scissor);
                 command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-                command_buffer.draw(static_cast<std::uint32_t>(triangle_vertices.size()), 1, 0, 0);
+                command_buffer.bindIndexBuffer(index_buffer_, 0, vk::IndexType::eUint16);
+                command_buffer.drawIndexed(static_cast<std::uint32_t>(triangle_indices.size()), 1, 0, 0, 0);
             }
             command_buffer.endRenderPass();
 
@@ -984,6 +1020,8 @@ private:
 
         device_.destroy(vertex_buffer_);
         device_.free(vertex_buffer_memory_);
+        device_.destroy(index_buffer_);
+        device_.free(index_buffer_memory_);
 
         for (std::uint32_t i = 0; i < max_frames_in_flight_; ++i) {
             device_.destroy(image_available_semaphores_[i]);
@@ -1079,6 +1117,8 @@ private:
     vk::CommandPool command_pool_;
     vk::Buffer vertex_buffer_;
     vk::DeviceMemory vertex_buffer_memory_;
+    vk::Buffer index_buffer_;
+    vk::DeviceMemory index_buffer_memory_;
     std::vector<vk::CommandBuffer> command_buffers_;
     std::vector<vk::Semaphore> image_available_semaphores_;
     std::vector<vk::Semaphore> render_finished_semaphores_;
