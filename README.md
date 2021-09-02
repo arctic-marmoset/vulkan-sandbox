@@ -10,14 +10,14 @@ at a later point.
 
 This project has only been tested on Linux, but should work on other platforms.
 Windows in particular may require changes to CMakeLists.txt and/or adding flags
-during the configure stage.
+during the configuration stage.
 
 | Dependency                                 | Minimum Version | Version Used by Me |
 | ------------------------------------------ | --------------- | ------------------ |
 | A C++ compiler with C++20 support          | `-`             | `11.1.0 (clang)`   |
-| [CMake](https://cmake.org/download/)       | `3.9.0`         | `3.20.2`           |
-| [GLSLC](https://github.com/google/shaderc) | `-`             | `2020.5`           |
-| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.0`           | `1.2.177`          |
+| [CMake](https://cmake.org/download/)       | `3.9.0`         | `3.21.2`           |
+| [GLSLC](https://github.com/google/shaderc) | `-`             | `2021.1`           |
+| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.0`           | `1.2.188`          |
 | [GLFW](https://www.glfw.org/)              | `3.0.0`         | `3.3.4 (glfw-x11)` |
 
 # Progress Preview

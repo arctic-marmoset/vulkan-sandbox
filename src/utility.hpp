@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <fstream>
+#include <optional>
 #include <vector>
 
 struct vertex {
@@ -56,6 +57,12 @@ struct swapchain_support_details {
     vk::SurfaceCapabilitiesKHR capabilities;
     std::vector<vk::SurfaceFormatKHR> formats;
     std::vector<vk::PresentModeKHR> present_modes;
+};
+
+struct uniform_buffer_object {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 inline std::vector<std::byte> read_file(const char *filepath)

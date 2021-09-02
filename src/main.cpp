@@ -289,7 +289,7 @@ private:
     {
         const ::queue_family_indices indices = find_queue_families(physical_device_);
 
-        const float queue_priority = 1.0f;
+        const float queue_priority = 1.0F;
 
         const std::set unique_queue_families = {
             indices.graphics_family.value(),
@@ -533,7 +533,7 @@ private:
             .cullMode                = vk::CullModeFlagBits::eBack,
             .frontFace               = vk::FrontFace::eClockwise,
             .depthBiasEnable         = VK_FALSE,
-            .lineWidth               = 1.0f,
+            .lineWidth               = 1.0F,
         };
 
         const vk::PipelineMultisampleStateCreateInfo multisample_state_create_info = {
@@ -788,7 +788,7 @@ private:
             const vk::CommandBufferBeginInfo begin_info = { };
             command_buffer.begin(begin_info);
 
-            const std::array color = { 0.0f, 0.0f, 0.0f, 1.0f };
+            const std::array color = { 0.0F, 0.0F, 0.0F, 1.0F };
             const vk::ClearValue clear_color = { color };
 
             const vk::RenderPassBeginInfo render_pass_begin_info = {
@@ -806,12 +806,12 @@ private:
             };
 
             const vk::Viewport viewport = {
-                .x        = 0.0f,
-                .y        = 0.0f,
+                .x        = 0.0F,
+                .y        = 0.0F,
                 .width    = static_cast<float>(swapchain_extent_.width),
                 .height   = static_cast<float>(swapchain_extent_.height),
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f,
+                .minDepth = 0.0F,
+                .maxDepth = 1.0F,
             };
 
             const vk::Rect2D scissor = {
@@ -894,13 +894,13 @@ private:
         std::uint32_t image_index = 0;
 
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
-        const auto acquire_next_image_result = static_cast<vk::Result>(
-            vkAcquireNextImageKHR(device_,
-                                  swapchain_,
-                                  std::numeric_limits<std::uint64_t>::max(),
-                                  image_available_semaphores_[current_frame_],
-                                  nullptr,
-                                  &image_index));
+        const auto acquire_next_image_result =
+            static_cast<vk::Result>(vkAcquireNextImageKHR(device_,
+                                                          swapchain_,
+                                                          std::numeric_limits<std::uint64_t>::max(),
+                                                          image_available_semaphores_[current_frame_],
+                                                          nullptr,
+                                                          &image_index));
 
         switch (acquire_next_image_result) {
         case vk::Result::eSuccess:
