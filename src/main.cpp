@@ -1,11 +1,13 @@
 #include "utility.hpp"
 
 #include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.hpp>
 
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -17,16 +19,19 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
-#include <string_view>
+
+namespace ranges = std::ranges;
+
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 constexpr std::uint32_t window_width  = 1280;
 constexpr std::uint32_t window_height = 720;
 
-constexpr std::array validation_layers = {
+constexpr std::array<const char *, 1> validation_layers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-constexpr std::array device_extensions = {
+constexpr std::array<const char *, 1> device_extensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -54,13 +59,13 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagB
     switch (message_severity) {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        std::cout << "[DEBUG_CALLBACK] " << data->pMessage << '\n';
+        std::cout << "[VULKAN] " << data->pMessage << '\n';
         break;
 
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
-        std::cerr << "[DEBUG_CALLBACK] " << data->pMessage << '\n';
+        std::cerr << "[VULKAN] " << data->pMessage << '\n';
         break;
     }
 
@@ -70,13 +75,14 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagB
 bool validation_layers_supported()
 {
     auto layers = vk::enumerateInstanceLayerProperties();
-    std::ranges::sort(layers, { }, &vk::LayerProperties::layerName);
+    ranges::sort(layers, { }, &vk::LayerProperties::layerName);
 
-    const auto name_projection = [](const vk::LayerProperties &properties) {
+    const auto name_projection = [](const vk::LayerProperties &properties)
+    {
         return static_cast<std::string_view>(properties.layerName);
     };
 
-    return std::ranges::includes(layers, validation_layers, { }, name_projection);
+    return ranges::includes(layers, validation_layers, { }, name_projection);
 }
 
 std::vector<const char *> required_extensions()
@@ -86,8 +92,9 @@ std::vector<const char *> required_extensions()
 
     std::vector extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
 
-    if constexpr (debug_mode)
+    if constexpr (debug_mode) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
 
     return extensions;
 }
@@ -115,7 +122,6 @@ public:
         vk::DynamicState::eViewport,
     };
 
-public:
     void run()
     {
         init_window();
@@ -127,15 +133,17 @@ public:
 private:
     void init_window()
     {
-        if (!glfwInit())
+        if (!glfwInit()) {
             throw std::runtime_error("Failed to initialize GLFW!");
+        }
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         window_ = glfwCreateWindow(window_width, window_height, "Vulkan Renderer", nullptr, nullptr);
 
-        if (!window_)
+        if (!window_) {
             throw std::runtime_error("Failed to create window!");
+        }
 
         glfwSetWindowUserPointer(window_, this);
         glfwSetFramebufferSizeCallback(window_, framebuffer_size_callback);
@@ -151,11 +159,15 @@ private:
         create_swapchain();
         create_image_views();
         create_render_pass();
+        create_descriptor_set_layout();
         create_graphics_pipeline();
         create_framebuffers();
         create_command_pool();
         create_vertex_buffer();
         create_index_buffer();
+        create_uniform_buffers();
+        create_descriptor_pool();
+        create_descriptor_sets();
         create_command_buffers();
         create_sync_objects();
     }
@@ -169,16 +181,13 @@ private:
         VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
         if constexpr (debug_mode) {
-            if (!validation_layers_supported())
+            if (!validation_layers_supported()) {
                 throw std::runtime_error("Validation layers requested but not supported!");
+            }
         }
 
         const vk::ApplicationInfo app_info = {
-            .pApplicationName   = "Hello Triangle",
-            .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
-            .pEngineName        = "Sandbox",
-            .engineVersion      = VK_MAKE_VERSION(0, 1, 0),
-            .apiVersion         = VK_API_VERSION_1_0,
+            .apiVersion = VK_API_VERSION_1_0,
         };
 
         vk::StructureChain<vk::InstanceCreateInfo, vk::DebugUtilsMessengerCreateInfoEXT> chain;
@@ -207,8 +216,9 @@ private:
 
     void attach_debug_messenger()
     {
-        if constexpr (!debug_mode)
+        if constexpr (!debug_mode) {
             return;
+        }
 
         vk::DebugUtilsMessengerCreateInfoEXT create_info;
         init_debug_messenger_create_info(create_info);
@@ -222,8 +232,9 @@ private:
     {
         VkSurfaceKHR surface = VK_NULL_HANDLE;
 
-        if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface) != VK_SUCCESS)
+        if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface) != VK_SUCCESS) {
             throw std::runtime_error("Failed to window surface!");
+        }
 
         surface_ = surface;
     }
@@ -232,15 +243,18 @@ private:
     {
         const auto devices = instance_.enumeratePhysicalDevices();
 
-        if (devices.empty())
+        if (devices.empty()) {
             throw std::runtime_error("Failed to find a GPU with Vulkan support!");
+        }
 
-        const auto candidate = std::ranges::find_if(devices, [this](const vk::PhysicalDevice &device) {
+        const auto candidate = ranges::find_if(devices, [this](const vk::PhysicalDevice &device)
+        {
             return is_device_suitable(device);
         });
 
-        if (candidate == devices.end())
+        if (candidate == devices.end()) {
             throw std::runtime_error("Failed to find a GPU suitable for this application!");
+        }
 
         physical_device_ = *candidate;
     }
@@ -251,10 +265,11 @@ private:
 
         const bool supports_extensions = device_supports_extensions(device);
 
-        const bool swapchain_adequate = supports_extensions && std::invoke([&] {
+        const bool swapchain_adequate = supports_extensions && ([&]
+        {
             const auto details = query_swapchain_support(device);
             return !details.formats.empty() && !details.present_modes.empty();
-        });
+        }());
 
         return indices.complete()
             && supports_extensions
@@ -265,21 +280,24 @@ private:
     {
         ::queue_family_indices indices;
 
-        const auto queue_families = device.getQueueFamilyProperties();
+        const std::vector<vk::QueueFamilyProperties> queue_families_properties = device.getQueueFamilyProperties();
 
-        for (std::uint32_t i = 0; i < queue_families.size(); ++i) {
-            const auto &queue_family = queue_families[i];
+        for (std::uint32_t i = 0; i < queue_families_properties.size(); ++i) {
+            const auto &queue_family_properties = queue_families_properties[i];
 
-            if (queue_family.queueFlags & vk::QueueFlagBits::eGraphics)
+            if (queue_family_properties.queueFlags & vk::QueueFlagBits::eGraphics) {
                 indices.graphics_family = i;
+            }
 
-            const vk::Bool32 present_support = device.getSurfaceSupportKHR(i, surface_);
+            const vk::Bool32 has_present_support = device.getSurfaceSupportKHR(i, surface_);
 
-            if (present_support)
+            if (has_present_support) {
                 indices.present_family = i;
+            }
 
-            if (indices.complete())
+            if (indices.complete()) {
                 break;
+            }
         }
 
         return indices;
@@ -349,6 +367,9 @@ private:
                                : std::min(desired_image_count, max_image_count);
 
         const auto indices = find_queue_families(physical_device_);
+        const auto sharing_mode = indices.graphics_family == indices.present_family
+                                ? vk::SharingMode::eExclusive
+                                : vk::SharingMode::eConcurrent;
 
         const std::array queue_family_indices = {
             indices.graphics_family.value(),
@@ -357,7 +378,8 @@ private:
 
         old_swapchain_ = swapchain_;
 
-        const auto create_info = std::invoke([&] {
+        const auto create_info = ([&]
+        {
             vk::SwapchainCreateInfoKHR result = {
                 .surface          = surface_,
                 .minImageCount    = image_count,
@@ -366,6 +388,7 @@ private:
                 .imageExtent      = extent,
                 .imageArrayLayers = 1,
                 .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+                .imageSharingMode = sharing_mode,
                 .preTransform     = swapchain_support.capabilities.currentTransform,
                 .presentMode      = present_mode,
                 .clipped          = VK_TRUE,
@@ -381,7 +404,7 @@ private:
             }
 
             return result;
-        });
+        }());
 
         swapchain_image_format_ = surface_format.format;
         swapchain_extent_       = extent;
@@ -392,12 +415,12 @@ private:
 
     vk::Extent2D select_swap_extent(const vk::SurfaceCapabilitiesKHR &capabilities)
     {
-        if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max())
+        if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
             return capabilities.currentExtent;
+        }
 
-        int frame_width  = 0;
-        int frame_height = 0;
-
+        int frame_width;
+        int frame_height;
         glfwGetFramebufferSize(window_, &frame_width, &frame_height);
 
         const auto width  = static_cast<std::uint32_t>(frame_width);
@@ -479,10 +502,27 @@ private:
         render_pass_ = device_.createRenderPass(render_pass_create_info);
     }
 
+    void create_descriptor_set_layout()
+    {
+        const vk::DescriptorSetLayoutBinding ubo_layout_binding = {
+            .binding         = 0,
+            .descriptorType  = vk::DescriptorType::eUniformBuffer,
+            .descriptorCount = 1,
+            .stageFlags      = vk::ShaderStageFlagBits::eVertex,
+        };
+
+        const vk::DescriptorSetLayoutCreateInfo layout_info = {
+            .bindingCount = 1,
+            .pBindings    = &ubo_layout_binding,
+        };
+
+        descriptor_set_layout_ = device_.createDescriptorSetLayout(layout_info);
+    }
+
     void create_graphics_pipeline()
     {
-        const auto vertex_shader_bytecode   = read_file("resources/shaders/triangle/triangle.vert.spv");
-        const auto fragment_shader_bytecode = read_file("resources/shaders/triangle/triangle.frag.spv");
+        const auto vertex_shader_bytecode   = read_file(TRIANGLE_VERT_SHADER_RELATIVE_PATH);
+        const auto fragment_shader_bytecode = read_file(TRIANGLE_FRAG_SHADER_RELATIVE_PATH);
 
         const auto vertex_shader_module   = create_shader_module(vertex_shader_bytecode);
         const auto fragment_shader_module = create_shader_module(fragment_shader_bytecode);
@@ -521,9 +561,7 @@ private:
 
         const vk::PipelineViewportStateCreateInfo viewport_state_create_info = {
             .viewportCount = 1,
-            .pViewports    = nullptr, // Dynamic
             .scissorCount  = 1,
-            .pScissors     = nullptr, // Dynamic
         };
 
         const vk::PipelineRasterizationStateCreateInfo rasterization_state_create_info = {
@@ -531,7 +569,7 @@ private:
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode             = vk::PolygonMode::eFill,
             .cullMode                = vk::CullModeFlagBits::eBack,
-            .frontFace               = vk::FrontFace::eClockwise,
+            .frontFace               = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable         = VK_FALSE,
             .lineWidth               = 1.0F,
         };
@@ -555,7 +593,10 @@ private:
             .pAttachments    = &color_blend_attachment_state,
         };
 
-        const vk::PipelineLayoutCreateInfo pipeline_layout_create_info = { };
+        const vk::PipelineLayoutCreateInfo pipeline_layout_create_info = {
+            .setLayoutCount = 1,
+            .pSetLayouts    = &descriptor_set_layout_,
+        };
 
         pipeline_layout_ = device_.createPipelineLayout(pipeline_layout_create_info);
 
@@ -582,8 +623,9 @@ private:
 
         const auto [result, pipeline] = device_.createGraphicsPipeline({ }, pipeline_create_info);
 
-        if (result != vk::Result::eSuccess)
+        if (result != vk::Result::eSuccess) {
             throw std::runtime_error("Failed to create graphics pipeline!");
+        }
 
         graphics_pipeline_ = pipeline;
 
@@ -615,6 +657,7 @@ private:
         const ::queue_family_indices indices = find_queue_families(physical_device_);
 
         const vk::CommandPoolCreateInfo create_info = {
+            .flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
             .queueFamilyIndex = indices.graphics_family.value(),
         };
 
@@ -688,8 +731,8 @@ private:
 
     void create_vertex_buffer()
     {
-        constexpr auto triangle_vertices_size =
-            static_cast<vk::DeviceSize>(sizeof(decltype(triangle_vertices)::value_type) * triangle_vertices.size());
+        constexpr vk::DeviceSize triangle_vertices_size =
+            sizeof(decltype(triangle_vertices)::value_type) * triangle_vertices.size();
 
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_buffer_memory;
@@ -702,6 +745,8 @@ private:
         if (void *data = device_.mapMemory(staging_buffer_memory, 0, triangle_vertices_size)) {
             std::memcpy(data, triangle_vertices.data(), triangle_vertices_size);
             device_.unmapMemory(staging_buffer_memory);
+        } else {
+            throw std::runtime_error("Failed to map staging buffer memory for vertices!");
         }
 
         create_buffer(triangle_vertices_size,
@@ -717,8 +762,8 @@ private:
 
     void create_index_buffer()
     {
-        constexpr auto triangle_indices_size =
-            static_cast<vk::DeviceSize>(sizeof(decltype(triangle_indices)::value_type) * triangle_indices.size());
+        constexpr vk::DeviceSize triangle_indices_size =
+            sizeof(decltype(triangle_indices)::value_type) * triangle_indices.size();
 
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_buffer_memory;
@@ -731,6 +776,8 @@ private:
         if (void *data = device_.mapMemory(staging_buffer_memory, 0, triangle_indices_size)) {
             std::memcpy(data, triangle_indices.data(), triangle_indices_size);
             device_.unmapMemory(staging_buffer_memory);
+        } else {
+            throw std::runtime_error("Failed to map staging buffer memory for indices!");
         }
 
         create_buffer(triangle_indices_size,
@@ -744,24 +791,90 @@ private:
         device_.free(staging_buffer_memory);
     }
 
+    void create_uniform_buffers()
+    {
+        const vk::DeviceSize buffer_size = sizeof(::uniform_buffer_object);
+
+        uniform_buffers_.resize(max_frames_in_flight_);
+        uniform_buffers_memory_.resize(max_frames_in_flight_);
+
+        for (std::size_t i = 0; i < max_frames_in_flight_; ++i) {
+            create_buffer(buffer_size,
+                          vk::BufferUsageFlagBits::eUniformBuffer,
+                          vk::MemoryPropertyFlagBits::eHostVisible |  vk::MemoryPropertyFlagBits::eHostCoherent,
+                          uniform_buffers_[i],
+                          uniform_buffers_memory_[i]);
+        }
+    }
+
+    void create_descriptor_pool()
+    {
+        const vk::DescriptorPoolSize pool_size = {
+            .type            = vk::DescriptorType::eUniformBuffer,
+            .descriptorCount = max_frames_in_flight_,
+        };
+
+        const vk::DescriptorPoolCreateInfo pool_info = {
+            .maxSets       = max_frames_in_flight_,
+            .poolSizeCount = 1,
+            .pPoolSizes    = &pool_size,
+        };
+
+        descriptor_pool_ = device_.createDescriptorPool(pool_info);
+    }
+
+    void create_descriptor_sets()
+    {
+        const std::vector<vk::DescriptorSetLayout> layouts(max_frames_in_flight_, descriptor_set_layout_);
+
+        const vk::DescriptorSetAllocateInfo alloc_info = {
+            .descriptorPool     = descriptor_pool_,
+            .descriptorSetCount = max_frames_in_flight_,
+            .pSetLayouts        = layouts.data(),
+        };
+
+        descriptor_sets_ = device_.allocateDescriptorSets(alloc_info);
+
+        for (std::size_t i = 0; i < max_frames_in_flight_; ++i) {
+            const vk::DescriptorBufferInfo buffer_info = {
+                .buffer = uniform_buffers_[i],
+                .offset = 0,
+                .range  = sizeof(::uniform_buffer_object),
+            };
+
+            const vk::WriteDescriptorSet descriptor_write = {
+                .dstSet          = descriptor_sets_[i],
+                .dstBinding      = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = vk::DescriptorType::eUniformBuffer,
+                .pBufferInfo     = &buffer_info,
+            };
+
+            device_.updateDescriptorSets({ descriptor_write }, { });
+        }
+    }
+
     std::uint32_t find_memory_type(std::uint32_t type_filter, vk::MemoryPropertyFlags properties)
     {
         constexpr auto filter_bitcount = std::numeric_limits<decltype(type_filter)>::digits;
         const std::bitset<filter_bitcount> eligible_types(type_filter);
 
-        constexpr auto type_present = [](std::bitset<filter_bitcount> types, std::uint32_t index) {
+        constexpr auto is_type_present = [](std::bitset<filter_bitcount> types, std::uint32_t index)
+        {
             return types.test(index);
         };
 
-        constexpr auto properties_present = [](vk::MemoryPropertyFlags superset, vk::MemoryPropertyFlags subset) {
+        constexpr auto are_properties_present = [](vk::MemoryPropertyFlags superset, vk::MemoryPropertyFlags subset)
+        {
             return (superset & subset) == subset;
         };
 
         const vk::PhysicalDeviceMemoryProperties memory_properties = physical_device_.getMemoryProperties();
         for (std::uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
             const auto candidate_properties = memory_properties.memoryTypes[i].propertyFlags;
-            if (type_present(eligible_types, i)
-                && properties_present(candidate_properties, properties)) {
+            if (is_type_present(eligible_types, i)
+                && are_properties_present(candidate_properties, properties)) {
                 return i;
             }
         }
@@ -780,18 +893,20 @@ private:
         };
 
         command_buffers_ = device_.allocateCommandBuffers(alloc_info);
+    }
 
-        for (std::size_t i = 0; i < command_buffers_.size(); ++i) {
-            const auto &command_buffer = command_buffers_[i];
-            const auto &framebuffer    = swapchain_framebuffers_[i];
+    void record_command_buffer(vk::CommandBuffer command_buffer, std::uint32_t image_index)
+    {
+        const vk::CommandBufferBeginInfo begin_info = { };
+        command_buffer.begin(begin_info);
 
-            const vk::CommandBufferBeginInfo begin_info = { };
-            command_buffer.begin(begin_info);
+        const std::array color           = { 0.01F, 0.01F, 0.01F, 0.01F };
+        const vk::ClearValue clear_color = {
+            .color = { color },
+        };
 
-            const std::array color = { 0.0F, 0.0F, 0.0F, 1.0F };
-            const vk::ClearValue clear_color = { color };
-
-            const vk::RenderPassBeginInfo render_pass_begin_info = {
+        const vk::Framebuffer framebuffer = swapchain_framebuffers_[image_index];
+        const vk::RenderPassBeginInfo render_pass_begin_info = {
                 .renderPass      = render_pass_,
                 .framebuffer     = framebuffer,
                 .renderArea      = {
@@ -805,16 +920,16 @@ private:
                 .pClearValues    = &clear_color,
             };
 
-            const vk::Viewport viewport = {
-                .x        = 0.0F,
-                .y        = 0.0F,
-                .width    = static_cast<float>(swapchain_extent_.width),
-                .height   = static_cast<float>(swapchain_extent_.height),
-                .minDepth = 0.0F,
-                .maxDepth = 1.0F,
-            };
+        const vk::Viewport viewport = {
+            .x        = 0.0F,
+            .y        = 0.0F,
+            .width    = static_cast<float>(swapchain_extent_.width),
+            .height   = static_cast<float>(swapchain_extent_.height),
+            .minDepth = 0.0F,
+            .maxDepth = 1.0F,
+        };
 
-            const vk::Rect2D scissor = {
+        const vk::Rect2D scissor = {
                 .offset = {
                     .x  = 0,
                     .y  = 0,
@@ -822,27 +937,31 @@ private:
                 .extent = swapchain_extent_,
             };
 
-            const std::array vertex_buffers = {
-                vertex_buffer_,
-            };
+        const std::array vertex_buffers = {
+            vertex_buffer_,
+        };
 
-            const auto offsets = std::to_array<vk::DeviceSize>({
-                0,
-            });
+        const std::array<vk::DeviceSize, 1> offsets = {
+            0,
+        };
 
-            command_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
-            {
-                command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_);
-                command_buffer.setViewport(0, 1, &viewport);
-                command_buffer.setScissor(0, 1, &scissor);
-                command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-                command_buffer.bindIndexBuffer(index_buffer_, 0, vk::IndexType::eUint16);
-                command_buffer.drawIndexed(static_cast<std::uint32_t>(triangle_indices.size()), 1, 0, 0, 0);
-            }
-            command_buffer.endRenderPass();
-
-            command_buffer.end();
+        command_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
+        {
+            command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_);
+            command_buffer.setViewport(0, 1, &viewport);
+            command_buffer.setScissor(0, 1, &scissor);
+            command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
+            command_buffer.bindIndexBuffer(index_buffer_, 0, vk::IndexType::eUint16);
+            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                              pipeline_layout_,
+                                              0,
+                                              { descriptor_sets_[current_frame_] },
+                                              { });
+            command_buffer.drawIndexed(static_cast<std::uint32_t>(triangle_indices.size()), 1, 0, 0, 0);
         }
+        command_buffer.endRenderPass();
+
+        command_buffer.end();
     }
 
     void create_sync_objects()
@@ -850,7 +969,6 @@ private:
         image_available_semaphores_.reserve(max_frames_in_flight_);
         render_finished_semaphores_.reserve(max_frames_in_flight_);
         in_flight_fences_.reserve(max_frames_in_flight_);
-        images_in_flight_.resize(swapchain_images_.size());
 
         const vk::FenceCreateInfo fence_info = {
             .flags = vk::FenceCreateFlagBits::eSignaled,
@@ -886,21 +1004,20 @@ private:
     void draw_frame()
     {
         [[maybe_unused]]
-        auto wait_result = device_.waitForFences(1,
-                                                 &in_flight_fences_[current_frame_],
+        auto wait_result = device_.waitForFences({ in_flight_fences_[current_frame_] },
                                                  VK_TRUE,
                                                  std::numeric_limits<std::uint64_t>::max());
 
-        std::uint32_t image_index = 0;
-
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
-        const auto acquire_next_image_result =
-            static_cast<vk::Result>(vkAcquireNextImageKHR(device_,
-                                                          swapchain_,
-                                                          std::numeric_limits<std::uint64_t>::max(),
-                                                          image_available_semaphores_[current_frame_],
-                                                          nullptr,
-                                                          &image_index));
+        std::uint32_t image_index = 0;
+        const vk::Result acquire_next_image_result{
+            vkAcquireNextImageKHR(device_,
+                                  swapchain_,
+                                  std::numeric_limits<std::uint64_t>::max(),
+                                  image_available_semaphores_[current_frame_],
+                                  nullptr,
+                                  &image_index)
+        };
 
         switch (acquire_next_image_result) {
         case vk::Result::eSuccess:
@@ -913,23 +1030,27 @@ private:
             throw std::runtime_error("Failed to acquire swapchain image!");
         }
 
-        if (images_in_flight_[image_index]) {
-            [[maybe_unused]]
-            auto unused = device_.waitForFences(1,
-                                                &images_in_flight_[image_index],
-                                                VK_TRUE,
-                                                std::numeric_limits<std::uint64_t>::max());
-        }
+        update_uniform_buffer(current_frame_);
 
-        images_in_flight_[image_index] = in_flight_fences_[current_frame_];
+        device_.resetFences({ 
+            in_flight_fences_[current_frame_],
+        });
+
+        const vk::CommandBuffer command_buffer = command_buffers_[current_frame_];
+        command_buffer.reset();
+        record_command_buffer(command_buffer, image_index);
 
         const std::array wait_semaphores = {
             image_available_semaphores_[current_frame_],
         };
 
-        const auto wait_stages = std::to_array<vk::PipelineStageFlags>({
+        const std::array<vk::PipelineStageFlags, 1> wait_stages = {
             vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        });
+        };
+
+        const std::array command_buffers = {
+            command_buffer,
+        };
 
         const std::array signal_semaphores = {
             render_finished_semaphores_[current_frame_],
@@ -939,15 +1060,12 @@ private:
             .waitSemaphoreCount   = static_cast<std::uint32_t>(wait_semaphores.size()),
             .pWaitSemaphores      = wait_semaphores.data(),
             .pWaitDstStageMask    = wait_stages.data(),
-            .commandBufferCount   = 1,
-            .pCommandBuffers      = &command_buffers_[image_index],
+            .commandBufferCount   = static_cast<std::uint32_t>(command_buffers.size()),
+            .pCommandBuffers      = command_buffers.data(),
             .signalSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
             .pSignalSemaphores    = signal_semaphores.data(),
         };
-
-        [[maybe_unused]]
-        auto reset_result = device_.resetFences(1, &in_flight_fences_[current_frame_]);
-
+        
         graphics_queue_.submit(submit_info, in_flight_fences_[current_frame_]);
 
         const std::array swapchains = {
@@ -962,10 +1080,9 @@ private:
             .pImageIndices      = &image_index,
         };
 
-        const auto c_present_info = static_cast<VkPresentInfoKHR>(present_info);
-
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
-        const auto present_result = static_cast<vk::Result>(vkQueuePresentKHR(present_queue_, &c_present_info));
+        const auto &c_present_info = static_cast<const VkPresentInfoKHR &>(present_info);
+        const vk::Result present_result{ vkQueuePresentKHR(present_queue_, &c_present_info) };
 
         if (present_result == vk::Result::eSuboptimalKHR
             || present_result == vk::Result::eErrorOutOfDateKHR
@@ -978,9 +1095,42 @@ private:
         current_frame_ = (current_frame_ + 1) % max_frames_in_flight_;
     }
 
+    void update_uniform_buffer(std::uint32_t current_image)
+    {
+        namespace chrono = std::chrono;
+
+        static auto start_time = chrono::high_resolution_clock::now();
+        const auto current_time = chrono::high_resolution_clock::now();
+        const float delta_t = chrono::duration<float, chrono::seconds::period>(current_time - start_time).count();
+
+        const float aspect_ratio = static_cast<float>(swapchain_extent_.width)
+                                 / static_cast<float>(swapchain_extent_.height);
+
+        ::uniform_buffer_object ubo;
+        ubo.model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, 0.0F, 1.0F));
+        ubo.view  = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F));
+        ubo.proj  = glm::perspective(glm::quarter_pi<float>(), aspect_ratio, 0.1F, 10.0F);
+        ubo.proj[1][1] *= -1.0F;
+
+        if (void *const data = device_.mapMemory(uniform_buffers_memory_[current_image], 0, sizeof(ubo))) {
+            std::memcpy(data, &ubo, sizeof(ubo));
+            device_.unmapMemory(uniform_buffers_memory_[current_image]);
+        } else {
+            throw std::runtime_error("Failed to map memory for uniform buffer!");
+        }
+    }
+
     void recreate_swapchain()
     {
         framebuffer_resized_ = false;
+
+        int width;
+        int height;
+        glfwGetFramebufferSize(window_, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window_, &width, &height);
+            glfwWaitEvents();
+        }
 
         device_.waitIdle();
 
@@ -990,24 +1140,20 @@ private:
         create_image_views();
         create_render_pass();
         create_framebuffers();
-        create_command_buffers();
     }
 
     void cleanup_swapchain()
     {
-        for (auto framebuffer : swapchain_framebuffers_)
+        for (auto framebuffer : swapchain_framebuffers_) {
             device_.destroy(framebuffer);
-
+        }
         swapchain_framebuffers_.clear();
-
-        device_.freeCommandBuffers(command_pool_, command_buffers_);
-        command_buffers_.clear();
 
         device_.destroy(render_pass_);
 
-        for (auto image_view : swapchain_image_views_)
+        for (auto image_view : swapchain_image_views_) {
             device_.destroy(image_view);
-
+        }
         swapchain_image_views_.clear();
 
         device_.destroy(old_swapchain_);
@@ -1017,6 +1163,14 @@ private:
     {
         cleanup_swapchain();
         device_.destroy(swapchain_);
+
+        for (std::size_t i = 0; i < max_frames_in_flight_; ++i) {
+            device_.destroy(uniform_buffers_[i]);
+            device_.free(uniform_buffers_memory_[i]);
+        }
+
+        device_.destroy(descriptor_pool_);
+        device_.destroy(descriptor_set_layout_);
 
         device_.destroy(vertex_buffer_);
         device_.free(vertex_buffer_memory_);
@@ -1056,36 +1210,38 @@ private:
     static bool device_supports_extensions(const vk::PhysicalDevice &device)
     {
         auto extensions = device.enumerateDeviceExtensionProperties();
-        std::ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
+        ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
 
-        const auto name_projection = [](const vk::ExtensionProperties &extension) {
+        const auto name_projection = [](const vk::ExtensionProperties &extension)
+        {
             return static_cast<std::string_view>(extension.extensionName);
         };
 
-        return std::ranges::includes(extensions, device_extensions, { }, name_projection);
+        return ranges::includes(extensions, device_extensions, { }, name_projection);
     }
 
     static vk::SurfaceFormatKHR select_swap_surface_format(const std::vector<vk::SurfaceFormatKHR> &surface_formats)
     {
-        const auto candidate = std::ranges::find_if(surface_formats, [](const vk::SurfaceFormatKHR &surface_format) {
+        const auto candidate = ranges::find_if(surface_formats, [](const vk::SurfaceFormatKHR &surface_format)
+        {
             return surface_format.format == vk::Format::eB8G8R8A8Srgb
                 && surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
         });
 
-        if (candidate == surface_formats.end())
+        if (candidate == surface_formats.end()) {
             return surface_formats.front();
+        }
 
         return *candidate;
     }
 
     static vk::PresentModeKHR select_swap_present_mode(const std::vector<vk::PresentModeKHR> &present_modes)
     {
-        const auto candidate = std::ranges::find_if(present_modes, [](const vk::PresentModeKHR &present_mode) {
-            return present_mode == vk::PresentModeKHR::eMailbox;
-        });
+        const auto candidate = ranges::find(present_modes, vk::PresentModeKHR::eMailbox);
 
-        if (candidate == present_modes.end())
+        if (candidate == present_modes.end()) {
             return vk::PresentModeKHR::eFifo;
+        }
 
         return *candidate;
     }
@@ -1093,7 +1249,7 @@ private:
 private:
     bool framebuffer_resized_ = false;
     std::uint32_t max_frames_in_flight_ = 2;
-    std::size_t current_frame_ = 0;
+    std::uint32_t current_frame_ = 0;
     GLFWwindow *window_ = nullptr;
     vk::Instance instance_;
 #ifndef NDEBUG
@@ -1111,6 +1267,7 @@ private:
     std::vector<vk::Image> swapchain_images_;
     std::vector<vk::ImageView> swapchain_image_views_;
     vk::RenderPass render_pass_;
+    vk::DescriptorSetLayout descriptor_set_layout_; 
     vk::PipelineLayout pipeline_layout_;
     vk::Pipeline graphics_pipeline_;
     std::vector<vk::Framebuffer> swapchain_framebuffers_;
@@ -1119,11 +1276,14 @@ private:
     vk::DeviceMemory vertex_buffer_memory_;
     vk::Buffer index_buffer_;
     vk::DeviceMemory index_buffer_memory_;
+    std::vector<vk::Buffer> uniform_buffers_;
+    std::vector<vk::DeviceMemory> uniform_buffers_memory_;
+    vk::DescriptorPool descriptor_pool_;
+    std::vector<vk::DescriptorSet> descriptor_sets_;
     std::vector<vk::CommandBuffer> command_buffers_;
     std::vector<vk::Semaphore> image_available_semaphores_;
     std::vector<vk::Semaphore> render_finished_semaphores_;
     std::vector<vk::Fence> in_flight_fences_;
-    std::vector<vk::Fence> images_in_flight_;
 };
 
 int main()

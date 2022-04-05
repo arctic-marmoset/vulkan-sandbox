@@ -8,18 +8,18 @@ at a later point.
 
 # Requirements
 
-This project has only been tested on Linux, but should work on other platforms.
-Windows in particular may require changes to CMakeLists.txt and/or adding flags
-during the configuration stage.
+This project has only been tested on Linux and Windows, but should work on other
+platforms. Vcpkg is recommended for managing dependencies.
 
-| Dependency                                 | Minimum Version | Version Used by Me |
-| ------------------------------------------ | --------------- | ------------------ |
-| A C++ compiler with C++20 support          | `-`             | `11.1.0 (clang)`   |
-| [CMake](https://cmake.org/download/)       | `3.9.0`         | `3.21.2`           |
-| [GLSLC](https://github.com/google/shaderc) | `-`             | `2021.1`           |
-| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.0`           | `1.2.188`          |
-| [GLFW](https://www.glfw.org/)              | `3.0.0`         | `3.3.4 (glfw-x11)` |
+| Dependency                                 | Version Used in Project |
+|--------------------------------------------|-------------------------|
+| A C++ compiler with C++20 support          | `13.0.1 (clang)`        |
+| [CMake](https://cmake.org/download/)       | `3.23.0`                |
+| [GLSLC](https://github.com/google/shaderc) | `2022.1`                |
+| [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.3.211`               |
+| [GLFW](https://www.glfw.org/)              | `3.3.7 (glfw-x11)`      |
+| [GLM](https://github.com/g-truc/glm)       | `0.9.9.8`               |
 
 # Progress Preview
 
-![Hello Triangle 2021-03-29](docs/images/2021-03-29_triangle.png "Hello, triangle!")
+![Hello Triangle 2022-04-05](docs/images/2022-04-05_triangle_trimmed.gif "Hello, triangle!")
