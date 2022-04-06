@@ -19,6 +19,24 @@ platforms. Vcpkg is recommended for managing dependencies.
 | [GLFW](https://www.glfw.org/)              | `3.3.7 (glfw-x11)`      |
 | [GLM](https://github.com/g-truc/glm)       | `0.9.9.8`               |
 
+# Project Setup
+
+## Clone the Repository
+```
+git clone --recurse-submodules {repo}
+```
+
+## Configure CMake
+```
+cd {projectRoot}
+cmake --preset {debug|release}
+```
+
+## Build
+```
+cmake --build build/{debug|release}
+```
+
 # Progress Preview
 
 ![Hello Triangle 2022-04-05](docs/images/2022-04-05_triangle_trimmed.gif "Hello, triangle!")
