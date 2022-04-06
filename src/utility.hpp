@@ -70,7 +70,7 @@ inline std::vector<std::byte> read_file(const char *filepath)
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
 
     if (!file) {
-        throw std::runtime_error("Could not open file!");
+        throw std::runtime_error("Could not open file: " + std::string(filepath) + "!");
     }
 
     const auto end = file.tellg();
