@@ -15,7 +15,6 @@ platforms. Vcpkg is recommended for managing dependencies.
 |--------------------------------------------|-------------------------|
 | A C++ compiler with C++20 support          | `13.0.1 (clang)`        |
 | [CMake](https://cmake.org/download/)       | `3.23.0`                |
-| [GLSLC](https://github.com/google/shaderc) | `2022.1`                |
 | [Vulkan SDK](https://vulkan.lunarg.com/)   | `1.3.211`               |
 | [GLFW](https://www.glfw.org/)              | `3.3.7 (glfw-x11)`      |
 | [GLM](https://github.com/g-truc/glm)       | `0.9.9.8`               |
