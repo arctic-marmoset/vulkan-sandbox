@@ -38,6 +38,15 @@ cmake --preset {debug|release}
 cmake --build build/{debug|release}
 ```
 
+## Run
+```
+cd {projectRoot}/build/{debug|release}
+./renderer
+```
+
+Note the directory change. This is necessary since the program expects resources
+to be located relative to the binary directory.
+
 # Progress Preview
 
 ![Hello Triangle 2022-04-05](docs/images/2022-04-05_triangle_trimmed.gif "Hello, triangle!")
