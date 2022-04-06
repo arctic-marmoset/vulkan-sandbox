@@ -1,21 +1,21 @@
-cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 project(VulkanSandbox)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-set(CMAKE_CXX_EXTENSIONS FALSE)
+set(CMAKE_CXX_STANDARD           23)
+set(CMAKE_CXX_STANDARD_REQUIRED  ON)
+set(CMAKE_CXX_EXTENSIONS        OFF)
 
 string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPPER)
 if(CMAKE_BUILD_TYPE_UPPER STREQUAL "RELEASE")
     include(CheckIPOSupported)
     check_ipo_supported(RESULT IPO_IS_SUPPORTED)
     if(IPO_IS_SUPPORTED)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
 endif()
 
-option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" TRUE)
-option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
+option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" ON)
+option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" OFF)
 
 if(MSVC)
     string(REGEX REPLACE "[-/]W[1-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -94,12 +94,21 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
     endif()
 endif()
 
-find_package(glfw3 REQUIRED)
+find_package(glfw3  REQUIRED)
+find_package(glm    REQUIRED)
 find_package(Vulkan REQUIRED)
+
+# Workaround for older versions of GLM
+if(NOT TARGET glm::glm)
+    get_target_property(GLM_INCLUDE_DIR glm INTERFACE_INCLUDE_DIRECTORIES)
+    add_library(glm::glm INTERFACE IMPORTED)
+    set_target_properties(glm::glm PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES ${GLM_INCLUDE_DIR}
+    )
+endif()
 
 add_executable(renderer
     src/main.cpp
-    src/vulkan_dispatcher.cpp
 )
 
 find_program(GLSL_VALIDATOR glslc REQUIRED)
@@ -110,20 +119,30 @@ set(GLSL_SOURCES
 )
 
 foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
-    get_filename_component(FILE_NAME ${RELATIVE_SOURCE_PATH} NAME)
+    get_filename_component(FILE_NAME_WITH_EXT ${RELATIVE_SOURCE_PATH} NAME)
     get_filename_component(FILE_DIR ${RELATIVE_SOURCE_PATH} DIRECTORY)
+
     set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/${RELATIVE_SOURCE_PATH}")
     set(OUTPUT_DIR "${PROJECT_BINARY_DIR}/${FILE_DIR}")
-    set(OUTPUT_FILE "${OUTPUT_DIR}/${FILE_NAME}.spv")
+
+    set(OUTPUT_FILE_WITH_EXT "${FILE_NAME_WITH_EXT}.spv")
+    set(OUTPUT_FILE_PATH "${OUTPUT_DIR}/${OUTPUT_FILE_WITH_EXT}")
 
     add_custom_command(
-        OUTPUT ${OUTPUT_FILE}
+        OUTPUT ${OUTPUT_FILE_PATH}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -o ${OUTPUT_FILE}
+        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -o ${OUTPUT_FILE_PATH}
         DEPENDS ${SOURCE_PATH}
         VERBATIM
     )
-    list(APPEND SPIRV_BYTECODE ${OUTPUT_FILE})
+
+    list(APPEND SPIRV_BYTECODE ${OUTPUT_FILE_PATH})
+
+    string(MAKE_C_IDENTIFIER ${FILE_NAME_WITH_EXT} FILE_NAME_ESCAPED)
+    string(TOUPPER ${FILE_NAME_ESCAPED} FILE_NAME_UPPER)
+    list(APPEND RENDERER_SHADER_BYTECODE_PATH_DEFINES
+        "${FILE_NAME_UPPER}_SHADER_RELATIVE_PATH=\"${FILE_DIR}/${OUTPUT_FILE_WITH_EXT}\""
+    )
 endforeach()
 
 add_custom_target(renderer_shaders
@@ -137,8 +156,12 @@ add_dependencies(renderer
 target_compile_definitions(renderer
     PRIVATE
         GLFW_INCLUDE_VULKAN
-        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_RADIANS
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+        VULKAN_HPP_NO_CONSTRUCTORS
+        VULKAN_HPP_NO_SETTERS
+        ${RENDERER_SHADER_BYTECODE_PATH_DEFINES}
 )
 
 target_include_directories(renderer
@@ -150,6 +173,7 @@ target_link_libraries(renderer
     PRIVATE
         ${CMAKE_DL_LIBS}
         glfw
+        glm::glm
         Vulkan::Vulkan
 )
 

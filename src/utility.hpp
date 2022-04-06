@@ -60,17 +60,18 @@ struct swapchain_support_details {
 };
 
 struct uniform_buffer_object {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
 };
 
 inline std::vector<std::byte> read_file(const char *filepath)
 {
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
 
-    if (!file)
+    if (!file) {
         throw std::runtime_error("Could not open file!");
+    }
 
     const auto end = file.tellg();
     file.seekg(0, std::ios::beg);
@@ -80,8 +81,9 @@ inline std::vector<std::byte> read_file(const char *filepath)
 
     const auto size = static_cast<std::size_t>(end - start);
 
-    if (size == 0)
+    if (size == 0) {
         return buffer;
+    }
 
     buffer.resize(size);
     file.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(size));
