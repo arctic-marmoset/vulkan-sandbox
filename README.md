@@ -19,6 +19,9 @@ still be installed manually:
 
 # Project Setup
 
+This project has only been tested on Linux and Windows 10. Other platforms may or
+may not also work.
+
 ## Clone the Repository
 ```
 git clone --recurse-submodules {repo}
