@@ -114,16 +114,27 @@ add_executable(renderer
 find_program(GLSL_VALIDATOR glslc REQUIRED)
 
 set(GLSL_SOURCES
-    resources/shaders/triangle/triangle.frag
-    resources/shaders/triangle/triangle.vert
+    src/shaders/triangle.frag
+    src/shaders/triangle.vert
+    src/shaders/texture.frag
+    src/shaders/texture.vert
 )
 
 foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
+    if(NOT RELATIVE_SOURCE_PATH MATCHES "^src/")
+        message(WARNING "${RELATIVE_SOURCE_PATH} is not in src directory.")
+    endif()
+
     get_filename_component(FILE_NAME_WITH_EXT ${RELATIVE_SOURCE_PATH} NAME)
     get_filename_component(FILE_DIR ${RELATIVE_SOURCE_PATH} DIRECTORY)
+    string(REGEX
+        REPLACE "^src/" "resources/"
+        RESOURCES_FILE_DIR
+        ${FILE_DIR}
+    )
 
     set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/${RELATIVE_SOURCE_PATH}")
-    set(OUTPUT_DIR "${PROJECT_BINARY_DIR}/${FILE_DIR}")
+    set(OUTPUT_DIR "${PROJECT_BINARY_DIR}/${RESOURCES_FILE_DIR}")
 
     set(OUTPUT_FILE_WITH_EXT "${FILE_NAME_WITH_EXT}.spv")
     set(OUTPUT_FILE_PATH "${OUTPUT_DIR}/${OUTPUT_FILE_WITH_EXT}")
@@ -141,7 +152,7 @@ foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
     string(MAKE_C_IDENTIFIER ${FILE_NAME_WITH_EXT} FILE_NAME_ESCAPED)
     string(TOUPPER ${FILE_NAME_ESCAPED} FILE_NAME_UPPER)
     list(APPEND RENDERER_SHADER_BYTECODE_PATH_DEFINES
-        "${FILE_NAME_UPPER}_SHADER_RELATIVE_PATH=\"${FILE_DIR}/${OUTPUT_FILE_WITH_EXT}\""
+        "${FILE_NAME_UPPER}_SHADER_RELATIVE_PATH=\"${RESOURCES_FILE_DIR}/${OUTPUT_FILE_WITH_EXT}\""
     )
 endforeach()
 
@@ -149,8 +160,13 @@ add_custom_target(renderer_shaders
     DEPENDS ${SPIRV_BYTECODE}
 )
 
+add_custom_target(renderer_resources
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/resources ${PROJECT_BINARY_DIR}/resources
+)
+
 add_dependencies(renderer
     renderer_shaders
+    renderer_resources
 )
 
 target_compile_definitions(renderer
