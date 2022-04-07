@@ -49,4 +49,4 @@ to be located relative to the binary directory.
 
 # Progress Preview
 
-![Hello Triangle 2022-04-05](docs/images/2022-04-05_triangle_trimmed.gif "Hello, triangle!")
+![Textures 2022-04-07](docs/images/2022-04-07_texture_trimmed.gif "Texture mapping")
