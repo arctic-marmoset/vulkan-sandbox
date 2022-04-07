@@ -836,7 +836,7 @@ private:
 
         copy_buffer_to_image(staging_buffer, texture_image_, texture.width, texture.height);
 
-        transition_image_layout(texture_image_, 
+        transition_image_layout(texture_image_,
                                 vk::Format::eR8G8B8A8Srgb,
                                 vk::ImageLayout::eTransferDstOptimal,
                                 vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -1234,7 +1234,7 @@ private:
 
         update_uniform_buffer(current_frame_);
 
-        device_.resetFences({ 
+        device_.resetFences({
             in_flight_fences_[current_frame_],
         });
 
@@ -1267,7 +1267,7 @@ private:
             .signalSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
             .pSignalSemaphores    = signal_semaphores.data(),
         };
-        
+
         graphics_queue_.submit(submit_info, in_flight_fences_[current_frame_]);
 
         const std::array swapchains = {
@@ -1527,7 +1527,7 @@ private:
     std::vector<vk::Image> swapchain_images_;
     std::vector<vk::ImageView> swapchain_image_views_;
     vk::RenderPass render_pass_;
-    vk::DescriptorSetLayout descriptor_set_layout_; 
+    vk::DescriptorSetLayout descriptor_set_layout_;
     vk::PipelineLayout pipeline_layout_;
     vk::Pipeline graphics_pipeline_;
     std::vector<vk::Framebuffer> swapchain_framebuffers_;
