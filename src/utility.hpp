@@ -23,7 +23,7 @@
 #endif
 
 struct vertex {
-    glm::vec2 position;
+    glm::vec3 position;
     glm::vec3 color;
     glm::vec2 tex_coord;
 
@@ -42,7 +42,7 @@ struct vertex {
             {
                 .location = 0,
                 .binding  = 0,
-                .format   = vk::Format::eR32G32Sfloat,
+                .format   = vk::Format::eR32G32B32Sfloat,
                 .offset   = offsetof(::vertex, position),
             },
             {
