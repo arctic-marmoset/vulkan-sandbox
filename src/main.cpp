@@ -42,15 +42,15 @@ constexpr bool debug_mode = false;
 #endif
 
 constexpr auto triangle_vertices = std::to_array<::vertex>({
-    { { -0.5F, -0.5F,  0.0F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-    { {  0.5F, -0.5F,  0.0F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-    { {  0.5F,  0.5F,  0.0F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-    { { -0.5F,  0.5F,  0.0F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } },
+    { { -0.5F, 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F } },
+    { {  0.5F, 0.0F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, 1.0F } },
+    { {  0.5F, 0.0F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, 0.0F } },
+    { { -0.5F, 0.0F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, 0.0F } },
 
-    { { -0.5F, -0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F } },
-    { {  0.5F, -0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 0.0F, 0.0F } },
-    { {  0.5F,  0.5F, -0.5F }, { 0.0F, 0.0F, 1.0F }, { 0.0F, 1.0F } },
-    { { -0.5F,  0.5F, -0.5F }, { 1.0F, 1.0F, 1.0F }, { 1.0F, 1.0F } },
+    { { -0.5F, 0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F } },
+    { {  0.5F, 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, 1.0F } },
+    { {  0.5F, 0.5F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, 0.0F } },
+    { { -0.5F, 0.5F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, 0.0F } },
 });
 
 constexpr auto triangle_indices = std::to_array<std::uint16_t>({
@@ -643,7 +643,7 @@ private:
         const vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {
             .depthTestEnable  = VK_TRUE,
             .depthWriteEnable = VK_TRUE,
-            .depthCompareOp   = vk::CompareOp::eLess,
+            .depthCompareOp   = vk::CompareOp::eGreater,
             .minDepthBounds   = 0.0F,
             .maxDepthBounds   = 1.0F,
         };
@@ -1218,7 +1218,7 @@ private:
                 .color = { color },
             },
             {
-                .depthStencil = { 1.0F, 0 },
+                .depthStencil = { 0.0F, 0 },
             },
         });
 
@@ -1475,12 +1475,11 @@ private:
         const float aspect_ratio = static_cast<float>(swapchain_extent_.width)
                                  / static_cast<float>(swapchain_extent_.height);
 
-        ::uniform_buffer_object ubo = {
-            .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, 0.0F, 1.0F)),
-            .view  = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)),
-            .proj  = glm::perspective(glm::quarter_pi<float>(), aspect_ratio, 0.1F, 10.0F),
+        const ::uniform_buffer_object ubo = {
+            .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::quarter_pi<float>(), glm::vec3(0.0F, -1.0F, 0.0F)),
+            .view  = glm::lookAt(glm::vec3(1.0F, -1.0F, -1.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, -1.0F, 0.0F)),
+            .proj  = vkm::perspective(glm::radians<float>(80.0F), aspect_ratio, 0.1F),
         };
-        ubo.proj[1][1] *= -1.0F;
 
         if (void *const data = device_.mapMemory(uniform_buffers_memory_[current_image], 0, sizeof(ubo))) {
             std::memcpy(data, &ubo, sizeof(ubo));
