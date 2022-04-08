@@ -23,7 +23,7 @@
 #endif
 
 struct vertex {
-    glm::vec2 position;
+    glm::vec3 position;
     glm::vec3 color;
     glm::vec2 tex_coord;
 
@@ -42,7 +42,7 @@ struct vertex {
             {
                 .location = 0,
                 .binding  = 0,
-                .format   = vk::Format::eR32G32Sfloat,
+                .format   = vk::Format::eR32G32B32Sfloat,
                 .offset   = offsetof(::vertex, position),
             },
             {
@@ -84,6 +84,30 @@ struct uniform_buffer_object {
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
+
+namespace vkm {
+
+template<typename T>
+glm::mat<4, 4, T, glm::defaultp> perspective(T vertical_fov, T aspect, T near)
+{
+    const T focal_length = static_cast<T>(1.0) / glm::tan(vertical_fov / static_cast<T>(2.0));
+
+    const T x = focal_length / aspect;
+    const T y = -focal_length;
+    const T a = static_cast<T>(0.0);
+    const T b = near;
+
+    glm::mat<4, 4, T, glm::defaultp> result(static_cast<T>(0.0));
+    result[0][0] = x;
+    result[1][1] = y;
+    result[2][2] = a;
+    result[2][3] = -static_cast<T>(1.0);
+    result[3][2] = b;
+
+    return result;
+}
+
+}
 
 inline std::vector<char> read_file(const char *filepath)
 {
