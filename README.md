@@ -49,4 +49,4 @@ to be located relative to the binary directory.
 
 # Progress Preview
 
-![Textures 2022-04-07](docs/images/2022-04-07_texture_trimmed.gif "Texture mapping")
+![Textures 2022-04-08](docs/images/2022-04-08_depth_trimmed.gif "Depth buffering")
