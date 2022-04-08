@@ -514,9 +514,9 @@ private:
         };
 
         const vk::SubpassDescription subpass_description = {
+            .pipelineBindPoint       = vk::PipelineBindPoint::eGraphics,
             .colorAttachmentCount    = 1,
             .pColorAttachments       = &color_attachment_reference,
-            .pipelineBindPoint       = vk::PipelineBindPoint::eGraphics,
             .pDepthStencilAttachment = &depth_attachment_reference,
         };
 
