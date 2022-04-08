@@ -42,15 +42,15 @@ constexpr bool debug_mode = false;
 #endif
 
 constexpr auto triangle_vertices = std::to_array<::vertex>({
-    { { -0.5F, 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F } },
-    { {  0.5F, 0.0F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, 1.0F } },
-    { {  0.5F, 0.0F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, 0.0F } },
-    { { -0.5F, 0.0F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, 0.0F } },
+    { { -0.5F, 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, (1.0F - 1.0F) } },
+    { {  0.5F, 0.0F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, (1.0F - 1.0F) } },
+    { {  0.5F, 0.0F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, (1.0F - 0.0F) } },
+    { { -0.5F, 0.0F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, (1.0F - 0.0F) } },
 
-    { { -0.5F, 0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F } },
-    { {  0.5F, 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, 1.0F } },
-    { {  0.5F, 0.5F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, 0.0F } },
-    { { -0.5F, 0.5F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, 0.0F } },
+    { { -0.5F, 0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, (1.0F - 1.0F) } },
+    { {  0.5F, 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, (1.0F - 1.0F) } },
+    { {  0.5F, 0.5F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, (1.0F - 0.0F) } },
+    { { -0.5F, 0.5F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, (1.0F - 0.0F) } },
 });
 
 constexpr auto triangle_indices = std::to_array<std::uint16_t>({
@@ -929,7 +929,7 @@ private:
 
         create_image(texture.width,
                      texture.height,
-                     vk::Format::eR8G8B8A8Srgb,
+                     vk::Format::eB8G8R8A8Srgb,
                      vk::ImageTiling::eOptimal,
                      vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                      vk::MemoryPropertyFlagBits::eDeviceLocal,
@@ -937,14 +937,14 @@ private:
                      texture_image_memory_);
 
         transition_image_layout(texture_image_,
-                                vk::Format::eR8G8B8A8Srgb,
+                                vk::Format::eB8G8R8A8Srgb,
                                 vk::ImageLayout::eUndefined,
                                 vk::ImageLayout::eTransferDstOptimal);
 
         copy_buffer_to_image(staging_buffer, texture_image_, texture.width, texture.height);
 
         transition_image_layout(texture_image_,
-                                vk::Format::eR8G8B8A8Srgb,
+                                vk::Format::eB8G8R8A8Srgb,
                                 vk::ImageLayout::eTransferDstOptimal,
                                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
@@ -955,7 +955,7 @@ private:
     void create_texture_image_view()
     {
         texture_image_view_ = create_image_view(texture_image_,
-                                                vk::Format::eR8G8B8A8Srgb,
+                                                vk::Format::eB8G8R8A8Srgb,
                                                 vk::ImageAspectFlagBits::eColor);
     }
 
