@@ -375,12 +375,19 @@ private:
         const auto present_mode   = select_swap_present_mode(swapchain_support.present_modes);
         const auto extent         = select_swap_extent(swapchain_support.capabilities);
 
-        const std::uint32_t desired_image_count = swapchain_support.capabilities.minImageCount + 1;
-        const std::uint32_t max_image_count     = swapchain_support.capabilities.maxImageCount;
+        const std::uint32_t desired_image_count = max_frames_in_flight_;
 
-        const auto image_count = max_image_count == 0
-                               ? desired_image_count
-                               : std::min(desired_image_count, max_image_count);
+        const std::uint32_t min_image_count = swapchain_support.capabilities.minImageCount;
+        const std::uint32_t max_image_count = swapchain_support.capabilities.maxImageCount;
+
+        // TODO: Revisit this comment when purpose of extra image is clearer.
+        // Request one more image above minimum to guarantee vkAcquireNextImageKHR is non-blocking (?).
+        // https://github.com/KhronosGroup/Vulkan-Docs/blob/77d9f42/appendices/VK_KHR_swapchain.txt#L180
+        const std::uint32_t effective_min_image_count = std::max(desired_image_count, min_image_count + 1);
+
+        const std::uint32_t image_count = max_image_count == 0
+                                        ? effective_min_image_count
+                                        : std::min(effective_min_image_count, max_image_count);
 
         const auto indices = find_queue_families(physical_device_);
         const auto sharing_mode = indices.graphics_family == indices.present_family
@@ -1652,7 +1659,8 @@ private:
     bool framebuffer_resized_ = false;
     int last_x_position_ = 0;
     int last_y_position_ = 0;
-    std::uint32_t max_frames_in_flight_ = 2;
+    // TODO: This should vary based on present mode.
+    std::uint32_t max_frames_in_flight_ = 3;
     std::uint32_t current_frame_ = 0;
     GLFWwindow *window_ = nullptr;
     vk::Instance instance_;
