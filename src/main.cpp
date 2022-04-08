@@ -1476,7 +1476,7 @@ private:
                                  / static_cast<float>(swapchain_extent_.height);
 
         const ::uniform_buffer_object ubo = {
-            .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::quarter_pi<float>(), glm::vec3(0.0F, -1.0F, 0.0F)),
+            .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, -1.0F, 0.0F)),
             .view  = glm::lookAt(glm::vec3(1.0F, -1.0F, -1.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, -1.0F, 0.0F)),
             .proj  = vkm::perspective(glm::radians<float>(80.0F), aspect_ratio, 0.1F),
         };
