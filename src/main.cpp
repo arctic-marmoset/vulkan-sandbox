@@ -78,7 +78,7 @@ bool validation_layers_supported()
     auto layers = vk::enumerateInstanceLayerProperties();
     ranges::sort(layers, { }, &vk::LayerProperties::layerName);
 
-    const auto name_projection = [](const vk::LayerProperties &properties)
+    constexpr auto name_projection = [](const vk::LayerProperties &properties)
     {
         return static_cast<std::string_view>(properties.layerName);
     };
@@ -148,6 +148,7 @@ private:
 
         glfwSetWindowUserPointer(window_, this);
         glfwSetFramebufferSizeCallback(window_, framebuffer_size_callback);
+        glfwSetKeyCallback(window_, key_callback);
     }
 
     void init_vulkan()
@@ -282,7 +283,7 @@ private:
             && supported_features.samplerAnisotropy;
     }
 
-    ::queue_family_indices find_queue_families(const vk::PhysicalDevice &device)
+    ::queue_family_indices find_queue_families(const vk::PhysicalDevice &device) const
     {
         ::queue_family_indices indices;
 
@@ -313,7 +314,7 @@ private:
     {
         const ::queue_family_indices indices = find_queue_families(physical_device_);
 
-        const float queue_priority = 1.0F;
+        constexpr float queue_priority = 1.0F;
 
         const std::set unique_queue_families = {
             indices.graphics_family.value(),
@@ -350,7 +351,7 @@ private:
         present_queue_  = device_.getQueue(indices.present_family.value(), 0);
     }
 
-    ::swapchain_support_details query_swapchain_support(const vk::PhysicalDevice &device)
+    ::swapchain_support_details query_swapchain_support(const vk::PhysicalDevice &device) const
     {
         return {
             .capabilities  = device.getSurfaceCapabilitiesKHR(surface_),
@@ -421,14 +422,14 @@ private:
         swapchain_images_ = device_.getSwapchainImagesKHR(swapchain_);
     }
 
-    vk::Extent2D select_swap_extent(const vk::SurfaceCapabilitiesKHR &capabilities)
+    vk::Extent2D select_swap_extent(const vk::SurfaceCapabilitiesKHR &capabilities) const
     {
         if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
             return capabilities.currentExtent;
         }
 
-        int frame_width;
-        int frame_height;
+        int frame_width  = 0;
+        int frame_height = 0;
         glfwGetFramebufferSize(window_, &frame_width, &frame_height);
 
         const auto width  = static_cast<std::uint32_t>(frame_width);
@@ -443,7 +444,7 @@ private:
         };
     }
 
-    vk::ImageView create_image_view(vk::Image image, vk::Format format)
+    vk::ImageView create_image_view(vk::Image image, vk::Format format) const
     {
         const vk::ImageViewCreateInfo create_info = {
                 .image              = image,
@@ -718,7 +719,7 @@ private:
 
     void copy_buffer(vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
     {
-        vk::CommandBuffer command_buffer = begin_one_time_commands();
+        const vk::CommandBuffer command_buffer = begin_one_time_commands();
 
         const vk::BufferCopy copy_region = {
             .srcOffset = 0,
@@ -733,7 +734,7 @@ private:
 
     void copy_buffer_to_image(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
     {
-        vk::CommandBuffer command_buffer = begin_one_time_commands();
+        const vk::CommandBuffer command_buffer = begin_one_time_commands();
 
         const vk::BufferImageCopy region = {
             .bufferOffset       = 0,
@@ -939,7 +940,7 @@ private:
 
     void create_uniform_buffers()
     {
-        const vk::DeviceSize buffer_size = sizeof(::uniform_buffer_object);
+        constexpr vk::DeviceSize buffer_size = sizeof(::uniform_buffer_object);
 
         uniform_buffers_.resize(max_frames_in_flight_);
         uniform_buffers_memory_.resize(max_frames_in_flight_);
@@ -1302,7 +1303,7 @@ private:
                                  vk::ImageLayout old_layout,
                                  vk::ImageLayout new_layout)
     {
-        vk::CommandBuffer command_buffer = begin_one_time_commands();
+        const vk::CommandBuffer command_buffer = begin_one_time_commands();
 
         vk::ImageMemoryBarrier barrier = {
             .oldLayout           = old_layout,
@@ -1350,7 +1351,7 @@ private:
         end_one_time_commands(command_buffer);
     }
 
-    void update_uniform_buffer(std::uint32_t current_image)
+    void update_uniform_buffer(std::uint32_t current_image) const
     {
         namespace chrono = std::chrono;
 
@@ -1361,10 +1362,11 @@ private:
         const float aspect_ratio = static_cast<float>(swapchain_extent_.width)
                                  / static_cast<float>(swapchain_extent_.height);
 
-        ::uniform_buffer_object ubo;
-        ubo.model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, 0.0F, 1.0F));
-        ubo.view  = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F));
-        ubo.proj  = glm::perspective(glm::quarter_pi<float>(), aspect_ratio, 0.1F, 10.0F);
+        ::uniform_buffer_object ubo = {
+            .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, 0.0F, 1.0F)),
+            .view  = glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)),
+            .proj  = glm::perspective(glm::quarter_pi<float>(), aspect_ratio, 0.1F, 10.0F),
+        };
         ubo.proj[1][1] *= -1.0F;
 
         if (void *const data = device_.mapMemory(uniform_buffers_memory_[current_image], 0, sizeof(ubo))) {
@@ -1379,8 +1381,8 @@ private:
     {
         framebuffer_resized_ = false;
 
-        int width;
-        int height;
+        int width  = 0;
+        int height = 0;
         glfwGetFramebufferSize(window_, &width, &height);
         while (width == 0 || height == 0) {
             glfwGetFramebufferSize(window_, &width, &height);
@@ -1467,12 +1469,34 @@ private:
         app->framebuffer_resized_ = true;
     }
 
+    static void key_callback(GLFWwindow *window, int key, int scancode, int action, int modifiers)
+    {
+        if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
+            auto *app = static_cast<::application *>(glfwGetWindowUserPointer(window));
+            if (app->fullscreen_) {
+                glfwSetWindowMonitor(window,
+                                     nullptr,
+                                     app->last_x_position_,
+                                     app->last_y_position_,
+                                     window_width,
+                                     window_height,
+                                     GLFW_DONT_CARE);
+            } else {
+                GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+                const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+                glfwGetWindowPos(window, &app->last_x_position_, &app->last_y_position_);
+                glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, GLFW_DONT_CARE);
+            }
+            app->fullscreen_ = !app->fullscreen_;
+        }
+    }
+
     static bool device_supports_extensions(const vk::PhysicalDevice &device)
     {
         auto extensions = device.enumerateDeviceExtensionProperties();
         ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
 
-        const auto name_projection = [](const vk::ExtensionProperties &extension)
+        constexpr auto name_projection = [](const vk::ExtensionProperties &extension)
         {
             return static_cast<std::string_view>(extension.extensionName);
         };
@@ -1507,7 +1531,10 @@ private:
     }
 
 private:
+    bool fullscreen_ = false;
     bool framebuffer_resized_ = false;
+    int last_x_position_ = 0;
+    int last_y_position_ = 0;
     std::uint32_t max_frames_in_flight_ = 2;
     std::uint32_t current_frame_ = 0;
     GLFWwindow *window_ = nullptr;

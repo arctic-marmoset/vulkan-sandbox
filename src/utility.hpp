@@ -207,7 +207,7 @@ struct file {
 
     std::size_t size() const
     {
-        return ((width * color_depth + 31) / 32) * 4 * height;
+        return ((static_cast<std::size_t>(width) * color_depth + 31) / 32) * 4 * height;
     }
 
     static file from(std::span<const char> bytes)
@@ -241,20 +241,18 @@ struct file {
             throw std::runtime_error("Only 32-bit color depths TGA files are supported!");
         }
 
-        const std::uint32_t width = image_specification.width;
-        const std::uint32_t height = image_specification.height;
-        const std::size_t size = ((width * color_depth + 31) / 32) * 4 * height;
-
-        const auto pixel_bytes = bytes.subspan(sizeof(tga::header), size);
-        std::vector<char> pixels(size);
-        std::memcpy(pixels.data(), pixel_bytes.data(), size);
-
-         return {
-            .pixels      = std::move(pixels),
-            .width       = width,
-            .height      = height,
+        tga::file file = {
+            .width       = image_specification.width,
+            .height      = image_specification.height,
             .color_depth = color_depth,
         };
+
+        const std::size_t size = file.size();
+        const auto pixel_bytes = bytes.subspan(sizeof(tga::header), size);
+        file.pixels.resize(size);
+        std::memcpy(file.pixels.data(), pixel_bytes.data(), size);
+
+         return file;
     }
 };
 
