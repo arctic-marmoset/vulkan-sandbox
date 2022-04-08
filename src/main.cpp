@@ -428,8 +428,8 @@ private:
             return capabilities.currentExtent;
         }
 
-        int frame_width;
-        int frame_height;
+        int frame_width  = 0;
+        int frame_height = 0;
         glfwGetFramebufferSize(window_, &frame_width, &frame_height);
 
         const auto width  = static_cast<std::uint32_t>(frame_width);
@@ -1381,8 +1381,8 @@ private:
     {
         framebuffer_resized_ = false;
 
-        int width;
-        int height;
+        int width  = 0;
+        int height = 0;
         glfwGetFramebufferSize(window_, &width, &height);
         while (width == 0 || height == 0) {
             glfwGetFramebufferSize(window_, &width, &height);
@@ -1471,7 +1471,7 @@ private:
 
     static void key_callback(GLFWwindow *window, int key, int scancode, int action, int modifiers)
     {
-        if (key == GLFW_KEY_ENTER && action == GLFW_PRESS && modifiers & GLFW_MOD_ALT) {
+        if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
             auto *app = static_cast<::application *>(glfwGetWindowUserPointer(window));
             if (app->fullscreen_) {
                 glfwSetWindowMonitor(window,
