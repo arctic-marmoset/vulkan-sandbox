@@ -49,4 +49,7 @@ to be located relative to the binary directory.
 
 # Progress Preview
 
-![Textures 2022-04-08](docs/images/2022-04-08_depth_trimmed.gif "Depth buffering")
+![Depth 2022-04-08](docs/images/2022-04-08_depth_trimmed.gif "Depth buffering")
+
+Reversed depth buffer visualisation:
+![Depth Visualised 2022-04-08](docs/images/2022-04-08_depth_visualised.png "Depth buffer visualised")
