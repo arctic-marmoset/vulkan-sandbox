@@ -138,7 +138,7 @@ inline std::vector<char> read_file(const char *filepath)
 template<std::size_t N>
 constexpr auto le_bytes_to_uint(std::span<const char, N> bytes)
 {
-    static_assert(N <= 8, "integers above 64 bits are unsupported!");
+    static_assert(N <= sizeof(std::uint64_t), "integers above 64 bits are unsupported!");
 
     std::uint64_t result = 0;
     if constexpr (std::endian::native == std::endian::little) {
@@ -148,7 +148,7 @@ constexpr auto le_bytes_to_uint(std::span<const char, N> bytes)
             result |= static_cast<std::uint64_t>(bytes[N - i - 1]) << (8 * i);
         }
     }
-    
+
     if constexpr (N == 1) {
         return static_cast<std::uint8_t>(result);
     } else if constexpr (N == 2) {

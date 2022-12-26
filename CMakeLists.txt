@@ -94,8 +94,8 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
     endif()
 endif()
 
-find_package(glfw3  REQUIRED)
-find_package(glm    REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 
 # Workaround for older versions of GLM
@@ -176,7 +176,6 @@ target_compile_definitions(renderer
         GLM_FORCE_RADIANS
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
         VULKAN_HPP_NO_CONSTRUCTORS
-        VULKAN_HPP_NO_SETTERS
         ${RENDERER_SHADER_BYTECODE_PATH_DEFINES}
 )
 

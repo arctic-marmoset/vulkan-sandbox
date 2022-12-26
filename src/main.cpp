@@ -69,9 +69,10 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagB
         std::cout << "[VULKAN] " << data->pMessage << '\n';
         break;
 
+    default:
+        std::cerr << "[VULKAN] Unknown debug message severity\n";
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
         std::cerr << "[VULKAN] " << data->pMessage << '\n';
         break;
     }
@@ -186,10 +187,8 @@ private:
 
     void create_instance()
     {
-        const vk::DynamicLoader loader;
-
         // NOLINTNEXTLINE(readability-identifier-naming): Vulkan-specific function name
-        auto *vkGetInstanceProcAddr = loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        auto *vkGetInstanceProcAddr = loader_.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
         if constexpr (debug_mode) {
@@ -199,7 +198,7 @@ private:
         }
 
         const vk::ApplicationInfo app_info = {
-            .apiVersion = VK_API_VERSION_1_0,
+            .apiVersion = VK_API_VERSION_1_3,
         };
 
         vk::StructureChain<vk::InstanceCreateInfo, vk::DebugUtilsMessengerCreateInfoEXT> chain;
@@ -235,9 +234,7 @@ private:
         vk::DebugUtilsMessengerCreateInfoEXT create_info;
         init_debug_messenger_create_info(create_info);
 
-#ifndef NDEBUG
         debug_messenger_ = instance_.createDebugUtilsMessengerEXT(create_info);
-#endif
     }
 
     void create_surface()
@@ -454,17 +451,17 @@ private:
     vk::ImageView create_image_view(vk::Image image, vk::Format format, vk::ImageAspectFlags aspect_flags) const
     {
         const vk::ImageViewCreateInfo create_info = {
-                .image              = image,
-                .viewType           = vk::ImageViewType::e2D,
-                .format             = format,
-                .subresourceRange   = {
-                    .aspectMask     = aspect_flags,
-                    .baseMipLevel   = 0,
-                    .levelCount     = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount     = 1,
-                },
-            };
+            .image              = image,
+            .viewType           = vk::ImageViewType::e2D,
+            .format             = format,
+            .subresourceRange   = {
+                .aspectMask     = aspect_flags,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            },
+        };
 
         return device_.createImageView(create_info);
     }
@@ -886,7 +883,7 @@ private:
                                      vk::FormatFeatureFlagBits::eDepthStencilAttachment);
     }
 
-    bool has_stencil_component(vk::Format format)
+    static bool has_stencil_component(vk::Format format)
     {
         return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
     }
@@ -1006,7 +1003,7 @@ private:
 
         create_buffer(triangle_vertices_size,
                       vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-                      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                      vk::MemoryPropertyFlagBits::eDeviceLocal,
                       vertex_buffer_,
                       vertex_buffer_memory_);
 
@@ -1037,7 +1034,7 @@ private:
 
         create_buffer(triangle_indices_size,
                       vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-                      vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                      vk::MemoryPropertyFlagBits::eDeviceLocal,
                       index_buffer_,
                       index_buffer_memory_);
 
@@ -1134,24 +1131,24 @@ private:
 
     std::uint32_t find_memory_type(std::uint32_t type_filter, vk::MemoryPropertyFlags properties)
     {
-        constexpr auto filter_bitcount = std::numeric_limits<decltype(type_filter)>::digits;
-        const std::bitset<filter_bitcount> eligible_types(type_filter);
+        constexpr auto filter_bit_count = std::numeric_limits<decltype(type_filter)>::digits;
+        const std::bitset<filter_bit_count> eligible_types(type_filter);
 
-        constexpr auto is_type_present = [](std::bitset<filter_bitcount> types, std::uint32_t index)
+        const auto is_type_present = [&eligible_types](std::uint32_t index)
         {
-            return types.test(index);
-        };
-
-        constexpr auto are_properties_present = [](vk::MemoryPropertyFlags superset, vk::MemoryPropertyFlags subset)
-        {
-            return (superset & subset) == subset;
+            return eligible_types.test(index);
         };
 
         const vk::PhysicalDeviceMemoryProperties memory_properties = physical_device_.getMemoryProperties();
+        const auto are_properties_present = [&properties](const vk::MemoryType &memory_type)
+        {
+            return (memory_type.propertyFlags & properties) == properties;
+        };
+
         for (std::uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
-            const auto candidate_properties = memory_properties.memoryTypes[i].propertyFlags;
-            if (is_type_present(eligible_types, i)
-                && are_properties_present(candidate_properties, properties)) {
+            const auto &candidate_type = memory_properties.memoryTypes[i];
+            if (is_type_present(i)
+                && are_properties_present(candidate_type)) {
                 return i;
             }
         }
@@ -1326,14 +1323,12 @@ private:
 
         // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
         std::uint32_t image_index = 0;
-        const vk::Result acquire_next_image_result{
-            vkAcquireNextImageKHR(device_,
-                                  swapchain_,
-                                  std::numeric_limits<std::uint64_t>::max(),
-                                  image_available_semaphores_[current_frame_],
-                                  nullptr,
-                                  &image_index)
-        };
+        const vk::Result acquire_next_image_result =
+                device_.acquireNextImageKHR(swapchain_,
+                                            std::numeric_limits<std::uint64_t>::max(),
+                                            image_available_semaphores_[current_frame_],
+                                            nullptr,
+                                            &image_index);
 
         switch (acquire_next_image_result) {
         case vk::Result::eSuccess:
@@ -1396,9 +1391,7 @@ private:
             .pImageIndices      = &image_index,
         };
 
-        // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
-        const auto &c_present_info = static_cast<const VkPresentInfoKHR &>(present_info);
-        const vk::Result present_result{ vkQueuePresentKHR(present_queue_, &c_present_info) };
+        const vk::Result present_result = present_queue_.presentKHR(&present_info);
 
         if (present_result == vk::Result::eSuboptimalKHR
             || present_result == vk::Result::eErrorOutOfDateKHR
@@ -1425,11 +1418,11 @@ private:
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image               = image,
             .subresourceRange    = {
-                .aspectMask     = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1,
+                .aspectMask      = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel    = 0,
+                .levelCount      = 1,
+                .baseArrayLayer  = 0,
+                .layerCount      = 1,
             },
         };
 
@@ -1472,8 +1465,8 @@ private:
         const auto current_time = chrono::high_resolution_clock::now();
         const float delta_t = chrono::duration<float, chrono::seconds::period>(current_time - start_time).count();
 
-        const float aspect_ratio = static_cast<float>(swapchain_extent_.width)
-                                 / static_cast<float>(swapchain_extent_.height);
+        const float aspect_ratio =
+            static_cast<float>(swapchain_extent_.width) / static_cast<float>(swapchain_extent_.height);
 
         const ::uniform_buffer_object ubo = {
             .model = glm::rotate(glm::mat4(1.0F), delta_t * glm::half_pi<float>(), glm::vec3(0.0F, -1.0F, 0.0F)),
@@ -1496,9 +1489,8 @@ private:
         int width  = 0;
         int height = 0;
         glfwGetFramebufferSize(window_, &width, &height);
-        while (width == 0 || height == 0) {
-            glfwGetFramebufferSize(window_, &width, &height);
-            glfwWaitEvents();
+        if (width == 0 || height == 0) {
+            return;
         }
 
         device_.waitIdle();
@@ -1507,7 +1499,6 @@ private:
 
         create_swapchain();
         create_image_views();
-        create_render_pass();
         create_depth_resources();
         create_framebuffers();
     }
@@ -1522,8 +1513,6 @@ private:
             device_.destroy(framebuffer);
         }
         swapchain_framebuffers_.clear();
-
-        device_.destroy(render_pass_);
 
         for (auto image_view : swapchain_image_views_) {
             device_.destroy(image_view);
@@ -1551,6 +1540,8 @@ private:
         device_.destroy(descriptor_pool_);
         device_.destroy(descriptor_set_layout_);
 
+        device_.destroy(render_pass_);
+
         device_.destroy(vertex_buffer_);
         device_.free(vertex_buffer_memory_);
         device_.destroy(index_buffer_);
@@ -1571,10 +1562,7 @@ private:
 
         instance_.destroy(surface_);
 
-#ifndef NDEBUG
         instance_.destroy(debug_messenger_);
-#endif
-
         instance_.destroy();
         glfwDestroyWindow(window_);
         glfwTerminate();
@@ -1590,6 +1578,7 @@ private:
     {
         if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
             auto *app = static_cast<::application *>(glfwGetWindowUserPointer(window));
+
             if (app->fullscreen_) {
                 glfwSetWindowMonitor(window,
                                      nullptr,
@@ -1604,6 +1593,7 @@ private:
                 glfwGetWindowPos(window, &app->last_x_position_, &app->last_y_position_);
                 glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, GLFW_DONT_CARE);
             }
+
             app->fullscreen_ = !app->fullscreen_;
         }
     }
@@ -1654,11 +1644,10 @@ private:
     int last_y_position_ = 0;
     std::uint32_t max_frames_in_flight_ = 2;
     std::uint32_t current_frame_ = 0;
+    vk::DynamicLoader loader_;
     GLFWwindow *window_ = nullptr;
     vk::Instance instance_;
-#ifndef NDEBUG
     vk::DebugUtilsMessengerEXT debug_messenger_;
-#endif
     vk::SurfaceKHR surface_;
     vk::PhysicalDevice physical_device_;
     vk::Device device_;
