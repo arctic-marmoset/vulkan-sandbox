@@ -65,13 +65,16 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagB
 {
     switch (message_severity) {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+        [[fallthrough]];
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
         std::cout << "[VULKAN] " << data->pMessage << '\n';
         break;
 
     default:
         std::cerr << "[VULKAN] Unknown debug message severity\n";
+        [[fallthrough]];
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        [[fallthrough]];
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
         std::cerr << "[VULKAN] " << data->pMessage << '\n';
         break;

@@ -1,40 +1,41 @@
-cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 project(VulkanSandbox)
 
-set(CMAKE_CXX_STANDARD           20)
-set(CMAKE_CXX_STANDARD_REQUIRED  ON)
-set(CMAKE_CXX_EXTENSIONS        OFF)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS FALSE)
 
-string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPPER)
-if(CMAKE_BUILD_TYPE_UPPER STREQUAL "RELEASE")
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT IPO_IS_SUPPORTED)
-    if(IPO_IS_SUPPORTED)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-    endif()
+include(CheckIPOSupported)
+check_ipo_supported(RESULT IPO_SUPPORTED)
+if(IPO_SUPPORTED)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG FALSE)
 endif()
-
-option(SANDBOX_USE_EXTENSIVE_WARNINGS "Turn warnings up to 11" ON)
-option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" OFF)
+message(STATUS "IPO supported: ${IPO_SUPPORTED}")
 
 if(MSVC)
     string(REGEX REPLACE "[-/]W[1-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(SANDBOX_WARN_FLAGS /W4 /permissive-)
+    set(SANDBOX_REQUIRED_WARN_FLAGS /W4 /permissive-)
 else()
-    set(SANDBOX_WARN_FLAGS -Wall -Wextra -Wpedantic)
+    set(SANDBOX_REQUIRED_WARN_FLAGS -Wall -Wextra -Wpedantic -Wnon-virtual-dtor)
 endif()
+
+option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
 
 if(SANDBOX_TREAT_WARN_AS_ERROR)
     if(MSVC)
-        list(APPEND SANDBOX_WARN_FLAGS /Wx)
+        list(APPEND SANDBOX_REQUIRED_WARN_FLAGS /Wx)
     else()
-        list(APPEND SANDBOX_WARN_FLAGS -Werror -pedantic-errors)
+        list(APPEND SANDBOX_REQUIRED_WARN_FLAGS -Werror -pedantic-errors)
     endif()
 endif()
 
+# See: https://github.com/cpp-best-practices/cppbestpractices.
+option(SANDBOX_USE_EXTENSIVE_WARNINGS "Enable warnings recommended by C++ Best Practices" TRUE)
+
 if(SANDBOX_USE_EXTENSIVE_WARNINGS)
     if(MSVC)
-        list(APPEND SANDBOX_WARN_FLAGS
+        set(SANDBOX_EXTRA_WARN_FLAGS
             /w14242 # possible loss of data: conversion from `type1` to `type2`
             /w14254 # possible loss of data: conversion from `type1:field_bits`
                     # to `type2:field_bits`
@@ -65,51 +66,33 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
                     # conversion has been implicitly applied
         )
     else()
-        list(APPEND SANDBOX_WARN_FLAGS
-            -Wshadow
-            -Wnon-virtual-dtor
-            -Wold-style-cast
+        set(SANDBOX_EXTRA_WARN_FLAGS
             -Wcast-align
             -Wunused
             -Woverloaded-virtual
             -Wconversion
             -Wsign-conversion
             -Wnull-dereference
+            -Wmisleading-indentation
             -Wformat=2
             -Wfloat-equal
         )
     endif()
 
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        list(APPEND SANDBOX_WARN_FLAGS
+        list(APPEND SANDBOX_EXTRA_WARN_FLAGS
             -Wduplicated-cond
             -Wduplicated-branches
-            -Wlogical-op
             -Wuseless-cast
+            -Wlogical-op
         )
     elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-        list(APPEND SANDBOX_WARN_FLAGS
+        list(APPEND SANDBOX_EXTRA_WARN_FLAGS
+            -Wimplicit-fallthrough
             -Wshorten-64-to-32
         )
     endif()
 endif()
-
-find_package(glfw3 CONFIG REQUIRED)
-find_package(glm CONFIG REQUIRED)
-find_package(Vulkan REQUIRED)
-
-# Workaround for older versions of GLM
-if(NOT TARGET glm::glm)
-    get_target_property(GLM_INCLUDE_DIR glm INTERFACE_INCLUDE_DIRECTORIES)
-    add_library(glm::glm INTERFACE IMPORTED)
-    set_target_properties(glm::glm PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES ${GLM_INCLUDE_DIR}
-    )
-endif()
-
-add_executable(renderer
-    src/main.cpp
-)
 
 find_program(GLSL_VALIDATOR glslc REQUIRED)
 
@@ -164,6 +147,28 @@ add_custom_target(renderer_resources
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/resources ${PROJECT_BINARY_DIR}/resources
 )
 
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
+find_package(Vulkan REQUIRED)
+
+# Workaround for older versions of GLM
+if(NOT TARGET glm::glm)
+    get_target_property(GLM_INCLUDE_DIR glm INTERFACE_INCLUDE_DIRECTORIES)
+    add_library(glm::glm INTERFACE IMPORTED)
+    set_target_properties(glm::glm PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES ${GLM_INCLUDE_DIR}
+    )
+endif()
+
+add_executable(renderer
+    src/main.cpp
+)
+
+target_include_directories(renderer
+    PRIVATE
+        include
+)
+
 add_dependencies(renderer
     renderer_shaders
     renderer_resources
@@ -179,11 +184,6 @@ target_compile_definitions(renderer
         ${RENDERER_SHADER_BYTECODE_PATH_DEFINES}
 )
 
-target_include_directories(renderer
-    PRIVATE
-        include
-)
-
 target_link_libraries(renderer
     PRIVATE
         ${CMAKE_DL_LIBS}
@@ -192,4 +192,42 @@ target_link_libraries(renderer
         Vulkan::Vulkan
 )
 
-target_compile_options(renderer PRIVATE ${SANDBOX_WARN_FLAGS})
+target_compile_options(renderer
+    PRIVATE
+        ${SANDBOX_REQUIRED_WARN_FLAGS}
+        ${SANDBOX_EXTRA_WARN_FLAGS}
+)
+
+# CMake flags for Release builds are suboptimal.
+# See: https://gitlab.kitware.com/cmake/cmake/-/issues/20812.
+# See: https://stackoverflow.com/questions/28178978/how-to-generate-pdb-files-for-release-build-with-cmake-flags.
+if(MSVC)
+    target_compile_options(renderer
+        PRIVATE
+            $<$<CONFIG:Release>:/Zc:inline>
+            $<$<CONFIG:Release>:/Zi>
+            $<$<CONFIG:Release>:/Gy>
+    )
+    target_link_options(renderer
+        PRIVATE
+            $<$<CONFIG:Release>:/DEBUG>
+            $<$<CONFIG:Release>:/INCREMENTAL:NO>
+            $<$<CONFIG:Release>:/OPT:REF>
+            $<$<CONFIG:Release>:/OPT:ICF>
+    )
+elseif((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang"))
+    target_compile_options(renderer
+        PRIVATE
+            $<$<CONFIG:Release>:-g>
+    )
+    target_link_options(renderer
+        PRIVATE
+            $<$<CONFIG:Release>:-g>
+    )
+    if(WIN32)
+        target_compile_options(renderer
+            PRIVATE
+                $<$<CONFIG:Release>:-gcodeview>
+        )
+    endif()
+endif()

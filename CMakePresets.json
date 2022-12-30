@@ -2,39 +2,102 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 21,
+    "minor": 24,
     "patch": 0
   },
   "configurePresets": [
     {
+      "name": "Base",
       "hidden": true,
-      "name": "base",
-      "displayName": "Base Config",
-      "description": "Base configuration using Ninja and vcpkg",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
       }
     },
     {
-      "name": "debug",
-      "inherits": "base",
-      "displayName": "Debug",
-      "description": "Build debug",
+      "name": "Debug",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
-      "name": "release",
-      "inherits": "base",
-      "displayName": "Release",
-      "description": "Build release",
+      "name": "Release",
+      "hidden": true,
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "MSVC",
+      "hidden": true,
+      "inherits": "Base",
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "intelliSenseMode": "windows-msvc-x64",
+          "enableMicrosoftCodeAnalysis": true,
+          "enableClangTidyCodeAnalysis": true
+        }
+      }
+    },
+    {
+      "name": "Clang",
+      "hidden": true,
+      "inherits": "Base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "Build-Tests",
+      "displayName": "Build Tests",
+      "hidden": true,
+      "description": "Include test suites in the build.",
+      "cacheVariables": {
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "Debug-MSVC",
+      "inherits": [
+        "Debug",
+        "MSVC"
+      ],
+      "displayName": "Debug (MSVC)",
+      "description": "Debug build for testing.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "Release-MSVC",
+      "inherits": [
+        "Release",
+        "MSVC"
+      ],
+      "displayName": "Release (MSVC)",
+      "description": "Optimized release build."
+    },
+    {
+      "name": "Debug-Clang",
+      "inherits": [
+        "Debug",
+        "Clang"
+      ],
+      "displayName": "Debug (Clang)",
+      "description": "Debug build for testing."
+    },
+    {
+      "name": "Release-Clang",
+      "inherits": [
+        "Release",
+        "Clang"
+      ],
+      "displayName": "Release (Clang)",
+      "description": "Optimized release build."
     }
   ]
 }

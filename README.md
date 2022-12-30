@@ -11,11 +11,12 @@ at a later point.
 This project uses vcpkg to pull in most dependencies. However, the following must
 still be installed manually:
 
-| Dependency                               | Version Used in Project |
-|------------------------------------------|-------------------------|
-| A C++ compiler with C++20 support        | `13.0.1 (clang)`        |
-| [CMake](https://cmake.org/download/)     | `3.23.0`                |
-| [Vulkan SDK](https://vulkan.lunarg.com/) | `1.3.211`               |
+| Dependency                                         | Version Used in Project |
+|----------------------------------------------------|-------------------------|
+| A C++ compiler with C++20 support                  | `15.0.5 (clang)`        |
+| [vcpkg](https://github.com/microsoft/vcpkg) itself | -                       |
+| [CMake](https://cmake.org/download/)               | `3.24.0`                |
+| [Vulkan SDK](https://vulkan.lunarg.com/)           | `1.3.236`               |
 
 # Project Setup
 
@@ -28,19 +29,23 @@ git clone --recurse-submodules {repo}
 ```
 
 ## Configure CMake
+There are currently two compilers (MSVC, Clang) and two build configurations (Debug, Release) with presets.
+
+The presets are named `{Compiler}-{Configuration}`, with each component spelled exactly as above.
+
 ```
 cd {projectRoot}
-cmake --preset {debug|release}
+cmake --preset {preset}
 ```
 
 ## Build
 ```
-cmake --build build/{debug|release}
+cmake --build build/{preset}
 ```
 
 ## Run
 ```
-cd {projectRoot}/build/{debug|release}
+cd {projectRoot}/build/{preset}
 ./renderer
 ```
 
