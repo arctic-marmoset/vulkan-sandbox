@@ -22,99 +22,104 @@
 #error "Unsupported compiler. This project currently only supports MSVC, GCC, and Clang."
 #endif
 
-struct vertex {
-    glm::vec3 position;
-    glm::vec3 color;
-    glm::vec2 tex_coord;
+struct Vertex
+{
+    glm::vec3 Position;
+    glm::vec3 Color;
+    glm::vec2 TexCoord;
 
-    static constexpr vk::VertexInputBindingDescription binding_description()
+    static constexpr vk::VertexInputBindingDescription GetBindingDescription()
     {
         return {
             .binding   = 0,
-            .stride    = sizeof(::vertex),
+            .stride    = sizeof(Vertex),
             .inputRate = vk::VertexInputRate::eVertex,
         };
     }
 
-    static constexpr auto attribute_descriptions()
+    static constexpr auto GetAttributeDescriptions()
     {
         return std::to_array<vk::VertexInputAttributeDescription>({
             {
                 .location = 0,
                 .binding  = 0,
                 .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(::vertex, position),
+                .offset   = offsetof(Vertex, Position),
             },
             {
                 .location = 1,
                 .binding  = 0,
                 .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(::vertex, color),
+                .offset   = offsetof(Vertex, Color),
             },
             {
                 .location = 2,
                 .binding  = 0,
                 .format   = vk::Format::eR32G32Sfloat,
-                .offset   = offsetof(::vertex, tex_coord),
+                .offset   = offsetof(Vertex, TexCoord),
             },
         });
     }
 };
 
-struct queue_family_indices {
-    std::optional<std::uint32_t> graphics_family;
-    std::optional<std::uint32_t> present_family;
+struct QueueFamilyIndices
+{
+    std::optional<std::uint32_t> Graphics;
+    std::optional<std::uint32_t> Present;
 
     [[nodiscard]]
-    bool complete() const
+    bool IsComplete() const
     {
-        return graphics_family.has_value()
-            && present_family.has_value();
+        return Graphics.has_value()
+               && Present.has_value();
     }
 };
 
-struct swapchain_support_details {
-    vk::SurfaceCapabilitiesKHR capabilities;
-    std::vector<vk::SurfaceFormatKHR> formats;
-    std::vector<vk::PresentModeKHR> present_modes;
-};
-
-struct uniform_buffer_object {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
-
-namespace vkm {
-
-template<typename T>
-glm::mat<4, 4, T, glm::defaultp> perspective(T vertical_fov, T aspect, T near)
+struct SwapChainSupportDetails
 {
-    const T focal_length = static_cast<T>(1.0) / glm::tan(vertical_fov / static_cast<T>(2.0));
+    vk::SurfaceCapabilitiesKHR Capabilities;
+    std::vector<vk::SurfaceFormatKHR> Formats;
+    std::vector<vk::PresentModeKHR> PresentModes;
+};
 
-    const T x = focal_length / aspect;
-    const T y = -focal_length;
-    const T a = static_cast<T>(0.0);
-    const T b = near;
+struct UniformBufferObject
+{
+    alignas(16) glm::mat4 Model;
+    alignas(16) glm::mat4 View;
+    alignas(16) glm::mat4 Proj;
+};
 
-    glm::mat<4, 4, T, glm::defaultp> result(static_cast<T>(0.0));
-    result[0][0] = x;
-    result[1][1] = y;
-    result[2][2] = a;
-    result[2][3] = -static_cast<T>(1.0);
-    result[3][2] = b;
+namespace vkm
+{
 
-    return result;
+    template<typename T>
+    glm::mat<4, 4, T, glm::defaultp> perspective(T verticalFov, T aspect, T near)
+    {
+        const T focalLength = static_cast<T>(1.0) / glm::tan(verticalFov / static_cast<T>(2.0));
+
+        const T x = focalLength / aspect;
+        const T y = -focalLength;
+        const T a = static_cast<T>(0.0);
+        const T b = near;
+
+        glm::mat<4, 4, T, glm::defaultp> result(static_cast<T>(0.0));
+        result[0][0] = x;
+        result[1][1] = y;
+        result[2][2] = a;
+        result[2][3] = -static_cast<T>(1.0);
+        result[3][2] = b;
+
+        return result;
+    }
 }
 
-}
-
-inline std::vector<char> read_file(const char *filepath)
+inline std::vector<char> ReadFile(const char *filepath)
 {
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
 
-    if (!file) {
-        throw std::runtime_error("Could not open file: " + std::string(filepath) + "!");
+    if (!file)
+    {
+        throw std::runtime_error("Could not open file: " + std::string(filepath));
     }
 
     const auto end = file.tellg();
@@ -125,7 +130,8 @@ inline std::vector<char> read_file(const char *filepath)
 
     const auto size = static_cast<std::size_t>(end - start);
 
-    if (size == 0) {
+    if (size == 0)
+    {
         return buffer;
     }
 
@@ -136,150 +142,170 @@ inline std::vector<char> read_file(const char *filepath)
 }
 
 template<std::size_t N>
-constexpr auto le_bytes_to_uint(std::span<const char, N> bytes)
+constexpr auto LittleEndianBytesToUint(std::span<const char, N> bytes)
 {
-    static_assert(N <= sizeof(std::uint64_t), "integers above 64 bits are unsupported!");
+    static_assert(N <= sizeof(std::uint64_t), "Integers above 64 bits are unsupported");
 
     std::uint64_t result = 0;
-    if constexpr (std::endian::native == std::endian::little) {
+    if constexpr (std::endian::native == std::endian::little)
+    {
         std::memcpy(&result, bytes.data(), N);
-    } else {
-        for (std::size_t i = 0; i < N; ++i) {
+    }
+    else
+    {
+        for (std::size_t i = 0; i < N; ++i)
+        {
             result |= static_cast<std::uint64_t>(bytes[N - i - 1]) << (8 * i);
         }
     }
 
-    if constexpr (N == 1) {
+    if constexpr (N == 1)
+    {
         return static_cast<std::uint8_t>(result);
-    } else if constexpr (N == 2) {
+    }
+    else if constexpr (N == 2)
+    {
         return static_cast<std::uint16_t>(result);
-    } else if constexpr (N <= 4) {
+    }
+    else if constexpr (N <= 4)
+    {
         return static_cast<std::uint32_t>(result);
-    } else {
+    }
+    else
+    {
         return result;
     }
 }
 
-namespace tga {
+namespace Tga
+{
 
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-struct SANDBOX_PACKED color_map_specification {
-    std::uint16_t first_entry_index;
-    std::uint16_t entry_count;
-    std::uint8_t  color_depth;
-};
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-static_assert(sizeof(color_map_specification) == 5, "tga::color_map_specification is not exactly 5 bytes!");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-struct SANDBOX_PACKED image_specification {
-    std::uint16_t x_origin;
-    std::uint16_t y_origin;
-    std::uint16_t width;
-    std::uint16_t height;
-    std::uint8_t  color_depth;
-    std::uint8_t  descriptor;
-};
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-static_assert(sizeof(image_specification) == 10, "tga::image_specification is not exactly 10 bytes!");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-struct SANDBOX_PACKED header {
-    std::uint8_t                 id_length;
-    std::uint8_t                 color_map_type;
-    std::uint8_t                 image_type;
-    tga::color_map_specification color_map_specification;
-    tga::image_specification     image_specification;
-};
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-static_assert(sizeof(header) == 18, "tga::header is not exactly 18 bytes!");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-struct SANDBOX_PACKED footer {
-    std::uint32_t extension_offset;
-    std::uint32_t developer_offset;
-    char          signature[16];
-    char          dot;
-    char          nul;
-};
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-struct file {
-    std::vector<char> pixels;
-    std::uint32_t     width;
-    std::uint32_t     height;
-    std::uint8_t      color_depth;
-
-    std::size_t size() const
+    struct SANDBOX_PACKED ColorMapSpecification
     {
-        return ((static_cast<std::size_t>(width) * color_depth + 31) / 32) * 4 * height;
-    }
+        std::uint16_t FirstEntryIndex;
+        std::uint16_t EntryCount;
+        std::uint8_t  ColorDepth;
+    };
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
-    static file from(std::span<const char> bytes)
+    static_assert(sizeof(ColorMapSpecification) == 5, "Tga::ColorMapSpecification is not exactly 5 bytes");
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
+    struct SANDBOX_PACKED ImageSpecification
     {
-        static_assert(std::endian::native == std::endian::little, "Big-endian systems are not yet supported!");
+        std::uint16_t XOrigin;
+        std::uint16_t YOrigin;
+        std::uint16_t Width;
+        std::uint16_t Height;
+        std::uint8_t  ColorDepth;
+        std::uint8_t  Descriptor;
+    };
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
-        if (bytes.size() < sizeof(tga::header)) {
-            throw std::runtime_error("Too few bytes to be a TGA file!");
+    static_assert(sizeof(ImageSpecification) == 10, "Tga::ImageSpecification is not exactly 10 bytes");
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
+    struct SANDBOX_PACKED Header
+    {
+        std::uint8_t IdLength;
+        std::uint8_t ColorMapType;
+        std::uint8_t ImageType;
+        Tga::ColorMapSpecification ColorMapSpecification;
+        Tga::ImageSpecification ImageSpecification;
+    };
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+    static_assert(sizeof(Header) == 18, "Tga::Header is not exactly 18 bytes");
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
+    struct SANDBOX_PACKED Footer
+    {
+        std::uint32_t ExtensionOffset;
+        std::uint32_t DeveloperOffset;
+        char Signature[16];
+        char Dot;
+        char Null;
+    };
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+    struct File
+    {
+        std::vector<char> Pixels;
+        std::uint32_t Width;
+        std::uint32_t Height;
+        std::uint8_t ColorDepth;
+
+        std::size_t GetSize() const
+        {
+            return ((static_cast<std::size_t>(Width) * ColorDepth + 31) / 32) * 4 * Height;
         }
 
-        const auto header_bytes = bytes.subspan<0, sizeof(tga::header)>();
-        tga::header header = { };
-        std::memcpy(&header, header_bytes.data(), sizeof(header));
+        static File CreateFrom(std::span<const char> bytes)
+        {
+            static_assert(std::endian::native == std::endian::little, "Big-endian systems are not yet supported");
 
-        if (header.image_type != 0x02) {
-            throw std::runtime_error("Only uncompressed true-color TGA files are supported!");
+            if (bytes.size() < sizeof(Tga::Header))
+            {
+                throw std::runtime_error("Too few bytes to be a TGA file");
+            }
+
+            const auto headerBytes = bytes.subspan<0, sizeof(Tga::Header)>();
+            Tga::Header header = { };
+            std::memcpy(&header, headerBytes.data(), sizeof(header));
+
+            if (header.ImageType != 0x02)
+            {
+                throw std::runtime_error("Only uncompressed true-color TGA files are supported");
+            }
+
+            const auto footerBytes = bytes.subspan(bytes.size() - sizeof(Tga::Footer));
+            Tga::Footer footer = { };
+            std::memcpy(&footer, footerBytes.data(), sizeof(footer));
+
+            if (footer.ExtensionOffset != 0 || footer.DeveloperOffset != 0)
+            {
+                throw std::runtime_error("TGA extension area and developer area are not yet supported");
+            }
+
+            const auto &imageSpecification = header.ImageSpecification;
+
+            const std::uint8_t colorDepth = imageSpecification.ColorDepth;
+            if (colorDepth != 32)
+            {
+                throw std::runtime_error("Only 32-bit color depths TGA files are supported");
+            }
+
+            Tga::File file = {
+                .Width       = imageSpecification.Width,
+                .Height      = imageSpecification.Height,
+                .ColorDepth = colorDepth,
+            };
+
+            const std::size_t size = file.GetSize();
+            const auto pixelBytes = bytes.subspan(sizeof(Tga::Header), size);
+            file.Pixels.resize(size);
+            std::memcpy(file.Pixels.data(), pixelBytes.data(), size);
+
+            return file;
         }
-
-        const auto footer_bytes = bytes.subspan(bytes.size() - sizeof(tga::footer));
-        tga::footer footer = { };
-        std::memcpy(&footer, footer_bytes.data(), sizeof(footer));
-
-        if (footer.extension_offset != 0 || footer.developer_offset != 0) {
-            throw std::runtime_error("TGA extension area and developer area are not yet supported!");
-        }
-
-        const auto &image_specification = header.image_specification;
-
-        const std::uint8_t color_depth = image_specification.color_depth;
-        if (color_depth != 32) {
-            throw std::runtime_error("Only 32-bit color depths TGA files are supported!");
-        }
-
-        tga::file file = {
-            .width       = image_specification.width,
-            .height      = image_specification.height,
-            .color_depth = color_depth,
-        };
-
-        const std::size_t size = file.size();
-        const auto pixel_bytes = bytes.subspan(sizeof(tga::header), size);
-        file.pixels.resize(size);
-        std::memcpy(file.pixels.data(), pixel_bytes.data(), size);
-
-         return file;
-    }
-};
-
+    };
 }
 
 #endif // VULKAN_SANDBOX_UTILITY_HPP
