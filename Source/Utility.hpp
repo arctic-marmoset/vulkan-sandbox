@@ -1,5 +1,5 @@
-#ifndef VULKAN_SANDBOX_UTILITY_HPP
-#define VULKAN_SANDBOX_UTILITY_HPP
+#ifndef VULKAN_RENDERER_UTILITY_HPP
+#define VULKAN_RENDERER_UTILITY_HPP
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
@@ -15,9 +15,9 @@
 #include <vector>
 
 #if defined(_MSC_VER)
-#define SANDBOX_PACKED
+#define VULKAN_RENDERER_PACKED
 #elif defined(__GNUC__) || defined(__GNUG__) || defined(__clang__)
-#define SANDBOX_PACKED __attribute__((packed))
+#define VULKAN_RENDERER_PACKED __attribute__((packed))
 #else
 #error "Unsupported compiler. This project currently only supports MSVC, GCC, and Clang."
 #endif
@@ -183,7 +183,7 @@ namespace Tga
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-    struct SANDBOX_PACKED ColorMapSpecification
+    struct VULKAN_RENDERER_PACKED ColorMapSpecification
     {
         std::uint16_t FirstEntryIndex;
         std::uint16_t EntryCount;
@@ -198,7 +198,7 @@ namespace Tga
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-    struct SANDBOX_PACKED ImageSpecification
+    struct VULKAN_RENDERER_PACKED ImageSpecification
     {
         std::uint16_t XOrigin;
         std::uint16_t YOrigin;
@@ -216,7 +216,7 @@ namespace Tga
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-    struct SANDBOX_PACKED Header
+    struct VULKAN_RENDERER_PACKED Header
     {
         std::uint8_t IdLength;
         std::uint8_t ColorMapType;
@@ -233,7 +233,7 @@ namespace Tga
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-    struct SANDBOX_PACKED Footer
+    struct VULKAN_RENDERER_PACKED Footer
     {
         std::uint32_t ExtensionOffset;
         std::uint32_t DeveloperOffset;
@@ -308,4 +308,4 @@ namespace Tga
     };
 }
 
-#endif // VULKAN_SANDBOX_UTILITY_HPP
+#endif // !VULKAN_RENDERER_UTILITY_HPP

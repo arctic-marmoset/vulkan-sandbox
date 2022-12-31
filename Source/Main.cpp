@@ -1,4 +1,4 @@
-#include "utility.hpp"
+#include "Utility.hpp"
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -949,7 +949,7 @@ private:
 
     void CreateTextureImage()
     {
-        const std::vector<char> fileBytes = ReadFile("resources/textures/test_screen_1024.tga");
+        const std::vector<char> fileBytes = ReadFile("Resources/Textures/Square_TestScreen_Raw.tga");
         const Tga::File texture = Tga::File::CreateFrom(fileBytes);
         const vk::DeviceSize textureSize = texture.GetSize();
 

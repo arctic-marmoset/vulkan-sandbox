@@ -4,6 +4,7 @@ Checks: >
     -fuchsia*,
     -llvm*,
     -altera*,
+    -bugprone-easily-swappable-parameters,
     -hicpp-braces-around-statements,
     -hicpp-uppercase-literal-suffix,
     -modernize-use-trailing-return-type,

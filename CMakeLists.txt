@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
-project(VulkanSandbox)
+project(VulkanRenderer)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS FALSE)
 
@@ -96,22 +96,22 @@ endif()
 
 find_program(GLSL_VALIDATOR glslc REQUIRED)
 
-set(GLSL_SOURCES
-    src/shaders/triangle.frag
-    src/shaders/triangle.vert
-    src/shaders/texture.frag
-    src/shaders/texture.vert
+set(SHADER_SOURCES
+    Source/Shaders/Triangle.frag
+    Source/Shaders/Triangle.vert
+    Source/Shaders/Texture.frag
+    Source/Shaders/Texture.vert
 )
 
-foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
-    if(NOT RELATIVE_SOURCE_PATH MATCHES "^src/")
-        message(WARNING "${RELATIVE_SOURCE_PATH} is not in src directory.")
+foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
+    if(NOT RELATIVE_SOURCE_PATH MATCHES "^Source/")
+        message(WARNING "${RELATIVE_SOURCE_PATH} is not in the Source directory.")
     endif()
 
     get_filename_component(FILE_NAME_WITH_EXT ${RELATIVE_SOURCE_PATH} NAME)
     get_filename_component(FILE_DIR ${RELATIVE_SOURCE_PATH} DIRECTORY)
     string(REGEX
-        REPLACE "^src/" "resources/"
+        REPLACE "^Source/" "Resources/"
         RESOURCES_FILE_DIR
         ${FILE_DIR}
     )
@@ -139,12 +139,12 @@ foreach(RELATIVE_SOURCE_PATH ${GLSL_SOURCES})
     )
 endforeach()
 
-add_custom_target(renderer_shaders
+add_custom_target(RendererShaders
     DEPENDS ${SPIRV_BYTECODE}
 )
 
-add_custom_target(renderer_resources
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/resources ${PROJECT_BINARY_DIR}/resources
+add_custom_target(RendererResources
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/Resources ${PROJECT_BINARY_DIR}/resources
 )
 
 find_package(glfw3 CONFIG REQUIRED)
@@ -160,21 +160,21 @@ if(NOT TARGET glm::glm)
     )
 endif()
 
-add_executable(renderer
-    src/main.cpp
+add_executable(Renderer
+    Source/Main.cpp
 )
 
-target_include_directories(renderer
+target_include_directories(Renderer
     PRIVATE
         include
 )
 
-add_dependencies(renderer
-    renderer_shaders
-    renderer_resources
+add_dependencies(Renderer
+    RendererShaders
+    RendererResources
 )
 
-target_compile_definitions(renderer
+target_compile_definitions(Renderer
     PRIVATE
         GLFW_INCLUDE_VULKAN
         GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -184,7 +184,7 @@ target_compile_definitions(renderer
         ${RENDERER_SHADER_BYTECODE_PATH_DEFINES}
 )
 
-target_link_libraries(renderer
+target_link_libraries(Renderer
     PRIVATE
         ${CMAKE_DL_LIBS}
         glfw
@@ -192,7 +192,7 @@ target_link_libraries(renderer
         Vulkan::Vulkan
 )
 
-target_compile_options(renderer
+target_compile_options(Renderer
     PRIVATE
         ${SANDBOX_REQUIRED_WARN_FLAGS}
         ${SANDBOX_EXTRA_WARN_FLAGS}
@@ -202,13 +202,13 @@ target_compile_options(renderer
 # See: https://gitlab.kitware.com/cmake/cmake/-/issues/20812.
 # See: https://stackoverflow.com/questions/28178978/how-to-generate-pdb-files-for-release-build-with-cmake-flags.
 if(MSVC)
-    target_compile_options(renderer
+    target_compile_options(Renderer
         PRIVATE
             $<$<CONFIG:Release>:/Zc:inline>
             $<$<CONFIG:Release>:/Zi>
             $<$<CONFIG:Release>:/Gy>
     )
-    target_link_options(renderer
+    target_link_options(Renderer
         PRIVATE
             $<$<CONFIG:Release>:/DEBUG>
             $<$<CONFIG:Release>:/INCREMENTAL:NO>
@@ -216,16 +216,16 @@ if(MSVC)
             $<$<CONFIG:Release>:/OPT:ICF>
     )
 elseif((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang"))
-    target_compile_options(renderer
+    target_compile_options(Renderer
         PRIVATE
             $<$<CONFIG:Release>:-g>
     )
-    target_link_options(renderer
+    target_link_options(Renderer
         PRIVATE
             $<$<CONFIG:Release>:-g>
     )
     if(WIN32)
-        target_compile_options(renderer
+        target_compile_options(Renderer
             PRIVATE
                 $<$<CONFIG:Release>:-gcodeview>
         )
