@@ -25,7 +25,6 @@
 struct Vertex
 {
     glm::vec3 Position;
-    glm::vec3 Color;
     glm::vec2 TexCoord;
 
     static constexpr vk::VertexInputBindingDescription GetBindingDescription()
@@ -48,12 +47,6 @@ struct Vertex
             },
             {
                 .location = 1,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(Vertex, Color),
-            },
-            {
-                .location = 2,
                 .binding  = 0,
                 .format   = vk::Format::eR32G32Sfloat,
                 .offset   = offsetof(Vertex, TexCoord),

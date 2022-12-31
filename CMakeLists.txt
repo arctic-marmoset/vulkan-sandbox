@@ -164,6 +164,11 @@ add_executable(Renderer
     Source/Main.cpp
 )
 
+target_precompile_headers(Renderer
+    PRIVATE
+        Source/pch.hpp
+)
+
 target_include_directories(Renderer
     PRIVATE
         include

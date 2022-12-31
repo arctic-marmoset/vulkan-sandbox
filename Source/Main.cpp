@@ -20,8 +20,6 @@
 #include <set>
 #include <stdexcept>
 
-namespace ranges = std::ranges;
-
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 constexpr std::uint32_t WindowWidth = 1280;
@@ -37,22 +35,25 @@ constexpr std::array<const char *, 1> DeviceExtensions = {
 
 constexpr bool IsDebugMode = true;
 
-constexpr auto TriangleVertices = std::to_array<Vertex>({
-    { { -0.5F, 0.0F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, (1.0F - 1.0F) } },
-    { {  0.5F, 0.0F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, (1.0F - 1.0F) } },
-    { {  0.5F, 0.0F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, (1.0F - 0.0F) } },
-    { { -0.5F, 0.0F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, (1.0F - 0.0F) } },
+constexpr std::array TriangleVertices = {
+    Vertex{ .Position = { -0.5F, 0.0F, -0.5F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  0.5F, 0.0F, -0.5F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  0.5F, 0.0F,  0.5F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -0.5F, 0.0F,  0.5F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
-    { { -0.5F, 0.5F, -0.5F }, { 1.0F, 0.0F, 0.0F }, { 0.0F, (1.0F - 1.0F) } },
-    { {  0.5F, 0.5F, -0.5F }, { 0.0F, 1.0F, 0.0F }, { 1.0F, (1.0F - 1.0F) } },
-    { {  0.5F, 0.5F,  0.5F }, { 0.0F, 0.0F, 1.0F }, { 1.0F, (1.0F - 0.0F) } },
-    { { -0.5F, 0.5F,  0.5F }, { 1.0F, 1.0F, 1.0F }, { 0.0F, (1.0F - 0.0F) } },
-});
+    Vertex{ .Position = { -0.5F, 0.5F, -0.5F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  0.5F, 0.5F, -0.5F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  0.5F, 0.5F,  0.5F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -0.5F, 0.5F,  0.5F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+};
 
-constexpr auto TriangleIndices = std::to_array<std::uint16_t>({
-    0, 1, 2, 2, 3, 0,
-    4, 5, 6, 6, 7, 4,
-});
+constexpr std::array TriangleIndices =
+    std::to_array<std::uint16_t>(
+        {
+            0, 1, 2, 2, 3, 0,
+            4, 5, 6, 6, 7, 4,
+        }
+    );
 
 VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanDebugMessengerCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -88,9 +89,9 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanDebugMessengerCallback(
 bool IsValidationLayersSupported()
 {
     auto layers = vk::enumerateInstanceLayerProperties();
-    ranges::sort(layers, { }, &vk::LayerProperties::layerName);
+    std::ranges::sort(layers, { }, &vk::LayerProperties::layerName);
 
-    return ranges::includes(
+    return std::ranges::includes(
         layers,
         ValidationLayers,
         { },
@@ -268,7 +269,7 @@ private:
             throw std::runtime_error("Failed to find a GPU with Vulkan support");
         }
 
-        const auto candidate = ranges::find_if(devices, [this](const vk::PhysicalDevice &device)
+        const auto candidate = std::ranges::find_if(devices, [this](const vk::PhysicalDevice &device)
         {
             return IsDeviceSuitable(device);
         });
@@ -1692,9 +1693,9 @@ private:
     static bool IsRequiredExtensionsSupported(const vk::PhysicalDevice &device)
     {
         auto extensions = device.enumerateDeviceExtensionProperties();
-        ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
+        std::ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
 
-        return ranges::includes(
+        return std::ranges::includes(
             extensions,
             DeviceExtensions,
             { },
@@ -1707,7 +1708,7 @@ private:
 
     static vk::SurfaceFormatKHR SelectSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &surfaceFormats)
     {
-        const auto candidate = ranges::find_if(surfaceFormats, [](const vk::SurfaceFormatKHR &surfaceFormat)
+        const auto candidate = std::ranges::find_if(surfaceFormats, [](const vk::SurfaceFormatKHR &surfaceFormat)
         {
             return surfaceFormat.format == vk::Format::eB8G8R8A8Srgb
                    && surfaceFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
@@ -1723,7 +1724,7 @@ private:
 
     static vk::PresentModeKHR SelectSwapPresentMode(const std::vector<vk::PresentModeKHR> &presentModes)
     {
-        const auto candidate = ranges::find(presentModes, vk::PresentModeKHR::eMailbox);
+        const auto candidate = std::ranges::find(presentModes, vk::PresentModeKHR::eMailbox);
 
         if (candidate == presentModes.end())
         {
