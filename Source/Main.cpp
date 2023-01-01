@@ -504,7 +504,19 @@ private:
 
     void CreateRenderPass()
     {
-        const vk::AttachmentDescription colorAttachment = {
+        enum : std::uint32_t
+        {
+            ColorAttachmentIndex,
+            DepthAttachmentIndex,
+
+            AttachmentCount,
+        };
+
+        std::array<vk::AttachmentDescription, AttachmentCount> attachments;
+        vk::AttachmentDescription &colorAttachment = attachments[ColorAttachmentIndex];
+        vk::AttachmentDescription &depthAttachment = attachments[DepthAttachmentIndex];
+
+        colorAttachment = {
             .format         = m_SwapChainImageFormat,
             .samples        = vk::SampleCountFlagBits::e1,
             .loadOp         = vk::AttachmentLoadOp::eClear,
@@ -515,12 +527,7 @@ private:
             .finalLayout    = vk::ImageLayout::ePresentSrcKHR,
         };
 
-        const vk::AttachmentReference colorAttachmentReference = {
-            .attachment = 0,
-            .layout     = vk::ImageLayout::eColorAttachmentOptimal,
-        };
-
-        const vk::AttachmentDescription depthAttachment = {
+        depthAttachment = {
             .format         = FindDepthFormat(),
             .samples        = vk::SampleCountFlagBits::e1,
             .loadOp         = vk::AttachmentLoadOp::eClear,
@@ -531,21 +538,46 @@ private:
             .finalLayout    = vk::ImageLayout::eDepthStencilAttachmentOptimal,
         };
 
+        const std::array colorAttachmentReferences = {
+            vk::AttachmentReference{
+                .attachment = ColorAttachmentIndex,
+                .layout     = vk::ImageLayout::eColorAttachmentOptimal,
+            },
+        };
+
         const vk::AttachmentReference depthAttachmentReference = {
-            .attachment = 1,
+            .attachment = DepthAttachmentIndex,
             .layout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
         };
 
-        const vk::SubpassDescription subpassDescription = {
+        enum : std::uint32_t
+        {
+            ColorSubpassIndex,
+
+            SubpassCount,
+        };
+
+        std::array<vk::SubpassDescription, SubpassCount> subpassDescriptions;
+        vk::SubpassDescription &colorSubpass = subpassDescriptions[ColorSubpassIndex];
+        colorSubpass = {
             .pipelineBindPoint       = vk::PipelineBindPoint::eGraphics,
-            .colorAttachmentCount    = 1,
-            .pColorAttachments       = &colorAttachmentReference,
+            .colorAttachmentCount    = static_cast<std::uint32_t>(colorAttachmentReferences.size()),
+            .pColorAttachments       = colorAttachmentReferences.data(),
             .pDepthStencilAttachment = &depthAttachmentReference,
         };
 
-        const vk::SubpassDependency dependency = {
+        enum : std::uint32_t
+        {
+            ColorTransitionDependencyIndex,
+
+            SubpassDependencyCount,
+        };
+
+        std::array<vk::SubpassDependency, SubpassDependencyCount> dependencies;
+        vk::SubpassDependency &colorTransitionDependency = dependencies[ColorTransitionDependencyIndex];
+        colorTransitionDependency = {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
-            .dstSubpass    = 0,
+            .dstSubpass    = ColorSubpassIndex,
             .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput
                            | vk::PipelineStageFlagBits::eEarlyFragmentTests,
 
@@ -557,18 +589,13 @@ private:
                            | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
         };
 
-        const std::array attachments = {
-            colorAttachment,
-            depthAttachment,
-        };
-
         const vk::RenderPassCreateInfo renderPassCreateInfo = {
             .attachmentCount = static_cast<std::uint32_t>(attachments.size()),
             .pAttachments    = attachments.data(),
-            .subpassCount    = 1,
-            .pSubpasses      = &subpassDescription,
-            .dependencyCount = 1,
-            .pDependencies   = &dependency,
+            .subpassCount    = static_cast<std::uint32_t>(subpassDescriptions.size()),
+            .pSubpasses      = subpassDescriptions.data(),
+            .dependencyCount = static_cast<std::uint32_t>(dependencies.size()),
+            .pDependencies   = dependencies.data(),
         };
 
         m_RenderPass = m_Device.createRenderPass(renderPassCreateInfo);
@@ -576,28 +603,35 @@ private:
 
     void CreateDescriptorSetLayout()
     {
-        const vk::DescriptorSetLayoutBinding samplerLayoutBinding = {
-            .binding            = 1,
-            .descriptorType     = vk::DescriptorType::eCombinedImageSampler,
-            .descriptorCount    = 1,
-            .stageFlags         = vk::ShaderStageFlagBits::eFragment,
+        enum : std::uint32_t
+        {
+            UboLayoutBindingIndex,
+            SamplerLayoutBindingIndex,
+
+            LayoutBindingCount,
         };
 
-        const vk::DescriptorSetLayoutBinding uboLayoutBinding = {
-            .binding         = 0,
+        std::array<vk::DescriptorSetLayoutBinding, LayoutBindingCount> layoutBindings;
+        vk::DescriptorSetLayoutBinding &uboLayoutBinding = layoutBindings[UboLayoutBindingIndex];
+        vk::DescriptorSetLayoutBinding &samplerLayoutBinding = layoutBindings[SamplerLayoutBindingIndex];
+
+        uboLayoutBinding = {
+            .binding         = UboLayoutBindingIndex,
             .descriptorType  = vk::DescriptorType::eUniformBuffer,
             .descriptorCount = 1,
             .stageFlags      = vk::ShaderStageFlagBits::eVertex,
         };
 
-        const std::array bindings = {
-            samplerLayoutBinding,
-            uboLayoutBinding,
+        samplerLayoutBinding = {
+            .binding         = SamplerLayoutBindingIndex,
+            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorCount = 1,
+            .stageFlags      = vk::ShaderStageFlagBits::eFragment,
         };
 
         const vk::DescriptorSetLayoutCreateInfo layoutInfo = {
-            .bindingCount = static_cast<std::uint32_t>(bindings.size()),
-            .pBindings    = bindings.data(),
+            .bindingCount = static_cast<std::uint32_t>(layoutBindings.size()),
+            .pBindings    = layoutBindings.data(),
         };
 
         m_DescriptorSetLayout = m_Device.createDescriptorSetLayout(layoutInfo);
@@ -611,21 +645,17 @@ private:
         const auto vsModule = CreateShaderModule(vsBytecode);
         const auto fsModule = CreateShaderModule(fsBytecode);
 
-        const vk::PipelineShaderStageCreateInfo vertexShaderStageCreateInfo = {
-            .stage  = vk::ShaderStageFlagBits::eVertex,
-            .module = vsModule,
-            .pName  = "main",
-        };
-
-        const vk::PipelineShaderStageCreateInfo fragmentShaderStageCreateInfo = {
-            .stage  = vk::ShaderStageFlagBits::eFragment,
-            .module = fsModule,
-            .pName  = "main",
-        };
-
         const std::array shaderStages = {
-            vertexShaderStageCreateInfo,
-            fragmentShaderStageCreateInfo,
+            vk::PipelineShaderStageCreateInfo{
+                .stage  = vk::ShaderStageFlagBits::eVertex,
+                .module = vsModule,
+                .pName  = "main",
+            },
+            vk::PipelineShaderStageCreateInfo{
+                .stage  = vk::ShaderStageFlagBits::eFragment,
+                .module = fsModule,
+                .pName  = "main",
+            },
         };
 
         const auto bindingDescription = Vertex::GetBindingDescription();
@@ -698,7 +728,7 @@ private:
         };
 
         const vk::GraphicsPipelineCreateInfo pipelineCreateInfo = {
-            .stageCount          = 2,
+            .stageCount          = static_cast<std::uint32_t>(shaderStages.size()),
             .pStages             = shaderStages.data(),
             .pVertexInputState   = &vertexInputStateCreateInfo,
             .pInputAssemblyState = &inputAssemblyStateCreateInfo,
