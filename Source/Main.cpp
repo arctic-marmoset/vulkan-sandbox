@@ -38,34 +38,34 @@ constexpr bool IsDebugMode = true;
 
 constexpr std::array Vertices = {
     // Ground
-    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
     // Front Wall
-    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F, -0.7F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -3.0F, -0.7F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
     // Right Wall
-    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  3.0F, -0.7F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = {  3.0F, -0.7F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
     // Back Wall
-    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -3.0F, -0.7F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = {  3.0F, -0.7F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
     // Left Wall
-    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -3.0F, -0.7F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -3.0F, -0.7F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 };
 
 constexpr std::array Indices =
@@ -205,6 +205,13 @@ private:
         glfwSetWindowUserPointer(m_Window, this);
         glfwSetFramebufferSizeCallback(m_Window, FramebufferSizeCallback);
         glfwSetKeyCallback(m_Window, KeyCallback);
+        glfwSetCursorPosCallback(m_Window, CursorPositionCallback);
+
+        glfwSetInputMode(m_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        if (glfwRawMouseMotionSupported())
+        {
+            glfwSetInputMode(m_Window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        }
     }
 
     void InitVulkan()
@@ -1354,9 +1361,10 @@ private:
         const vk::CommandBufferBeginInfo beginInfo = { };
         commandBuffer.begin(beginInfo);
 
-        constexpr std::array color = { 0.01F, 0.01F, 0.01F, 0.01F };
+        constexpr std::array darkGrey = { 0.01F, 0.01F, 0.01F, 1.0F };
+        constexpr std::array skyBlue = { 0.576F, 0.827F, 0.929F, 1.0F };
         const auto clearValues = std::to_array<vk::ClearValue>({
-            { .color = { color } },
+            { .color = { skyBlue } },
             { .depthStencil = { 0.0F, 0 } },
         });
 
@@ -1451,13 +1459,60 @@ private:
 
     void EnterMainLoop()
     {
+        m_CurrentTick = std::chrono::steady_clock::now();
+        m_LastTick = m_CurrentTick - std::chrono::milliseconds(33);
+
         while (!glfwWindowShouldClose(m_Window))
         {
-            glfwPollEvents();
+            m_DeltaTime = std::chrono::duration<float>(m_CurrentTick - m_LastTick).count();
+
+            UpdateState(m_DeltaTime);
             DrawFrame();
+            glfwPollEvents();
+
+            m_LastTick = m_CurrentTick;
+            m_CurrentTick = std::chrono::steady_clock::now();
         }
 
         m_Device.waitIdle();
+    }
+
+    void UpdateState(float deltaTime)
+    {
+        const auto deltaX = static_cast<float>(m_MousePos.XPos - m_LastMousePos.XPos);
+        const auto deltaY = static_cast<float>(m_MousePos.YPos - m_LastMousePos.YPos);
+
+        UpdateCamera(deltaX, deltaY);
+
+        m_LastMousePos = m_MousePos;
+    }
+
+    void UpdateCamera(float deltaX, float deltaY)
+    {
+        constexpr float lookSensitivity = 0.005F;
+
+        constexpr float pitchLimit = glm::half_pi<float>() - 0.01F;
+        const float deltaYaw = lookSensitivity * -deltaX;
+        const float deltaPitch = lookSensitivity * deltaY;
+
+        m_Camera.Yaw = glm::mod(m_Camera.Yaw + deltaYaw, glm::two_pi<float>());
+        m_Camera.Pitch = glm::clamp(m_Camera.Pitch + deltaPitch, -pitchLimit, pitchLimit);
+
+        const glm::vec3 lookDirection = {
+            glm::cos(m_Camera.Yaw) * glm::cos(m_Camera.Pitch),
+            glm::sin(m_Camera.Pitch),
+            glm::sin(m_Camera.Yaw) * glm::cos(m_Camera.Pitch),
+        };
+
+        m_Camera.Forward = glm::normalize(lookDirection);
+        m_Camera.Right = glm::normalize(glm::cross(m_Camera.Forward, glm::vec3(0.0F, -1.0F, 0.0F)));
+        m_Camera.Up = glm::normalize(glm::cross(m_Camera.Right, m_Camera.Forward));
+    }
+
+    [[nodiscard]]
+    glm::mat4 GetViewMatrix() const
+    {
+        return glm::lookAt(glm::vec3(0.0F), m_Camera.Forward, m_Camera.Up);
     }
 
     void DrawFrame()
@@ -1606,7 +1661,7 @@ private:
 
         const UniformBufferObject ubo = {
             .Model = glm::mat4(1.0F),
-            .View  = glm::lookAt(glm::vec3(0.0F), glm::vec3(0.0F, 0.0F, 1.0F), glm::vec3(0.0F, -1.0F, 0.0F)),
+            .View  = GetViewMatrix(),
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.1F),
         };
 
@@ -1751,6 +1806,15 @@ private:
         }
     }
 
+    static void CursorPositionCallback(GLFWwindow *window, double xPos, double yPos)
+    {
+        auto *app = static_cast<::Application *>(glfwGetWindowUserPointer(window));
+        app->m_MousePos = {
+            .XPos = xPos,
+            .YPos = yPos,
+        };
+    }
+
     static bool IsRequiredExtensionsSupported(const vk::PhysicalDevice &device)
     {
         auto extensions = device.enumerateDeviceExtensionProperties();
@@ -1860,6 +1924,29 @@ private:
     std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
     std::vector<vk::Fence> m_InFlightFences;
+
+    std::chrono::steady_clock::time_point m_LastTick;
+    std::chrono::steady_clock::time_point m_CurrentTick;
+    float m_DeltaTime;
+
+    struct Mouse
+    {
+        double XPos;
+        double YPos;
+    };
+
+    Mouse m_LastMousePos = { };
+    Mouse m_MousePos = { };
+
+    struct
+    {
+        glm::vec3 Forward = { 0.0F, 0.0F, 1.0F };
+        glm::vec3 Right = { 1.0F, 0.0F, 0.0F };
+        glm::vec3 Up = { 0.0F, -1.0F, 0.0F };
+
+        float Yaw   = 3.0F * glm::pi<float>();
+        float Pitch = 0.0F;
+    } m_Camera;
 };
 
 constexpr std::string_view ResourcesPathFlag = "--resources-path";
