@@ -36,23 +36,51 @@ constexpr std::array<const char *, 1> DeviceExtensions = {
 
 constexpr bool IsDebugMode = true;
 
-constexpr std::array TriangleVertices = {
-    Vertex{ .Position = { -0.5F, 0.0F, -0.5F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  0.5F, 0.0F, -0.5F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  0.5F, 0.0F,  0.5F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -0.5F, 0.0F,  0.5F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+constexpr std::array Vertices = {
+    // Ground
+    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 
-    Vertex{ .Position = { -0.5F, 0.5F, -0.5F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  0.5F, 0.5F, -0.5F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  0.5F, 0.5F,  0.5F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -0.5F, 0.5F,  0.5F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    // Front Wall
+    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F, -0.7F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -3.0F, -0.7F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+
+    // Right Wall
+    Vertex{ .Position = {  3.0F,  1.8F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = {  3.0F, -0.7F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  3.0F, -0.7F,  3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+
+    // Back Wall
+    Vertex{ .Position = {  3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -3.0F, -0.7F, -3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  3.0F, -0.7F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+
+    // Left Wall
+    Vertex{ .Position = { -3.0F,  1.8F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -3.0F,  1.8F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
+    Vertex{ .Position = { -3.0F, -0.7F,  3.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -3.0F, -0.7F, -3.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 };
 
-constexpr std::array TriangleIndices =
+constexpr std::array Indices =
     std::to_array<std::uint16_t>(
         {
-            0, 1, 2, 2, 3, 0,
-            4, 5, 6, 6, 7, 4,
+            // Ground
+             0,  1,  2,  2,  3,  0,
+            // Front Wall
+             4,  5,  6,  6,  7,  4,
+            // Right Wall
+             8,  9, 10, 10, 11,  8,
+            // Back Wall
+            12, 13, 14, 14, 15, 12,
+            // Left Wall
+            16, 17, 18, 18, 19, 16,
         }
     );
 
@@ -992,7 +1020,7 @@ private:
 
     void CreateTextureImage()
     {
-        const std::vector<std::uint8_t> fileBytes = ReadFile(GetResourcePath("Textures/Square_TestScreen_Raw.tga").c_str());
+        const std::vector<std::uint8_t> fileBytes = ReadFile(GetResourcePath("Textures/Missing_Raw.tga").c_str());
         const Tga::File texture = Tga::File::CreateFrom(fileBytes);
         const vk::DeviceSize textureSize = texture.GetSize();
 
@@ -1058,8 +1086,8 @@ private:
         const vk::PhysicalDeviceProperties properties = m_PhysicalDevice.getProperties();
 
         const vk::SamplerCreateInfo createInfo = {
-            .magFilter               = vk::Filter::eLinear,
-            .minFilter               = vk::Filter::eLinear,
+            .magFilter               = vk::Filter::eNearest,
+            .minFilter               = vk::Filter::eNearest,
             .mipmapMode              = vk::SamplerMipmapMode::eLinear,
             .addressModeU            = vk::SamplerAddressMode::eRepeat,
             .addressModeV            = vk::SamplerAddressMode::eRepeat,
@@ -1081,7 +1109,7 @@ private:
     void CreateVertexBuffer()
     {
         constexpr vk::DeviceSize triangleVerticesSize =
-            sizeof(decltype(TriangleVertices)::value_type) * TriangleVertices.size();
+            sizeof(decltype(Vertices)::value_type) * Vertices.size();
 
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1095,7 +1123,7 @@ private:
 
         if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleVerticesSize))
         {
-            std::memcpy(data, TriangleVertices.data(), triangleVerticesSize);
+            std::memcpy(data, Vertices.data(), triangleVerticesSize);
             m_Device.unmapMemory(stagingBufferMemory);
         }
         else
@@ -1119,7 +1147,7 @@ private:
     void CreateIndexBuffer()
     {
         constexpr vk::DeviceSize triangleIndicesSize =
-            sizeof(decltype(TriangleIndices)::value_type) * TriangleIndices.size();
+            sizeof(decltype(Indices)::value_type) * Indices.size();
 
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1133,7 +1161,7 @@ private:
 
         if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleIndicesSize))
         {
-            std::memcpy(data, TriangleIndices.data(), triangleIndicesSize);
+            std::memcpy(data, Indices.data(), triangleIndicesSize);
             m_Device.unmapMemory(stagingBufferMemory);
         }
         else
@@ -1386,7 +1414,7 @@ private:
                 { m_DescriptorSets[m_CurrentFrameIndex] },
                 { }
             );
-            commandBuffer.drawIndexed(static_cast<std::uint32_t>(TriangleIndices.size()), 1, 0, 0, 0);
+            commandBuffer.drawIndexed(static_cast<std::uint32_t>(Indices.size()), 1, 0, 0, 0);
         }
         commandBuffer.endRenderPass();
 
@@ -1573,18 +1601,12 @@ private:
 
     void UpdateUniformBuffer(std::uint32_t currentImage) const
     {
-        namespace chrono = std::chrono;
-
-        static auto startTime = chrono::high_resolution_clock::now();
-        const auto currentTime = chrono::high_resolution_clock::now();
-        const float deltaTime = chrono::duration<float, chrono::seconds::period>(currentTime - startTime).count();
-
         const float aspectRatio =
             static_cast<float>(m_SwapChainExtent.width) / static_cast<float>(m_SwapChainExtent.height);
 
         const UniformBufferObject ubo = {
-            .Model = glm::rotate(glm::mat4(1.0F), deltaTime * glm::half_pi<float>(), glm::vec3(0.0F, -1.0F, 0.0F)),
-            .View  = glm::lookAt(glm::vec3(1.0F, -1.0F, -1.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, -1.0F, 0.0F)),
+            .Model = glm::mat4(1.0F),
+            .View  = glm::lookAt(glm::vec3(0.0F), glm::vec3(0.0F, 0.0F, 1.0F), glm::vec3(0.0F, -1.0F, 0.0F)),
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.1F),
         };
 
