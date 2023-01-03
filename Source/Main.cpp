@@ -37,7 +37,7 @@ constexpr std::array<const char *, 1> DeviceExtensions = {
 
 constexpr bool IsDebugMode = true;
 
-constexpr std::array Vertices = {
+constexpr std::array ArenaVertices = {
     // Ground
     Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
     Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
@@ -69,7 +69,7 @@ constexpr std::array Vertices = {
     Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
 };
 
-constexpr std::array Indices =
+constexpr std::array ArenaIndices =
     std::to_array<std::uint16_t>(
         {
             // Ground
@@ -1059,20 +1059,20 @@ private:
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_TextureImage,
-            m_TextureImageMemory
+            m_MissingTextureImage,
+            m_MissingTextureImageMemory
         );
 
         TransitionImageLayout(
-            m_TextureImage,
+            m_MissingTextureImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eTransferDstOptimal
         );
 
-        CopyBufferToImage(stagingBuffer, m_TextureImage, texture.Width, texture.Height);
+        CopyBufferToImage(stagingBuffer, m_MissingTextureImage, texture.Width, texture.Height);
 
         TransitionImageLayout(
-            m_TextureImage,
+            m_MissingTextureImage,
             vk::ImageLayout::eTransferDstOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal
         );
@@ -1083,8 +1083,8 @@ private:
 
     void CreateTextureImageView()
     {
-        m_TextureImageView = CreateImageView(
-            m_TextureImage,
+        m_MissingTextureImageView = CreateImageView(
+            m_MissingTextureImage,
             vk::Format::eB8G8R8A8Srgb,
             vk::ImageAspectFlagBits::eColor
         );
@@ -1118,7 +1118,7 @@ private:
     void CreateVertexBuffer()
     {
         constexpr vk::DeviceSize triangleVerticesSize =
-            sizeof(decltype(Vertices)::value_type) * Vertices.size();
+            sizeof(decltype(ArenaVertices)::value_type) * ArenaVertices.size();
 
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1132,7 +1132,7 @@ private:
 
         if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleVerticesSize))
         {
-            std::memcpy(data, Vertices.data(), triangleVerticesSize);
+            std::memcpy(data, ArenaVertices.data(), triangleVerticesSize);
             m_Device.unmapMemory(stagingBufferMemory);
         }
         else
@@ -1156,7 +1156,7 @@ private:
     void CreateIndexBuffer()
     {
         constexpr vk::DeviceSize triangleIndicesSize =
-            sizeof(decltype(Indices)::value_type) * Indices.size();
+            sizeof(decltype(ArenaIndices)::value_type) * ArenaIndices.size();
 
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1170,7 +1170,7 @@ private:
 
         if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleIndicesSize))
         {
-            std::memcpy(data, Indices.data(), triangleIndicesSize);
+            std::memcpy(data, ArenaIndices.data(), triangleIndicesSize);
             m_Device.unmapMemory(stagingBufferMemory);
         }
         else
@@ -1254,7 +1254,7 @@ private:
 
             const vk::DescriptorImageInfo imageInfo = {
                 .sampler     = m_TextureSampler,
-                .imageView   = m_TextureImageView,
+                .imageView   = m_MissingTextureImageView,
                 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
             };
 
@@ -1424,7 +1424,7 @@ private:
                 { m_DescriptorSets[m_CurrentFrameIndex] },
                 { }
             );
-            commandBuffer.drawIndexed(static_cast<std::uint32_t>(Indices.size()), 1, 0, 0, 0);
+            commandBuffer.drawIndexed(static_cast<std::uint32_t>(ArenaIndices.size()), 1, 0, 0, 0);
         }
         commandBuffer.endRenderPass();
 
@@ -1837,9 +1837,9 @@ private:
         m_Device.destroy(m_SwapChain);
 
         m_Device.destroy(m_TextureSampler);
-        m_Device.destroy(m_TextureImageView);
-        m_Device.destroy(m_TextureImage);
-        m_Device.free(m_TextureImageMemory);
+        m_Device.destroy(m_MissingTextureImageView);
+        m_Device.destroy(m_MissingTextureImage);
+        m_Device.free(m_MissingTextureImageMemory);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -2019,9 +2019,14 @@ private:
     vk::DeviceMemory m_DepthImageMemory;
     vk::ImageView m_DepthImageView;
 
-    vk::Image m_TextureImage;
-    vk::DeviceMemory m_TextureImageMemory;
-    vk::ImageView m_TextureImageView;
+    vk::Image m_MissingTextureImage;
+    vk::DeviceMemory m_MissingTextureImageMemory;
+    vk::ImageView m_MissingTextureImageView;
+
+    vk::Image m_DragonTextureImage;
+    vk::DeviceMemory m_DragonTextureImageMemory;
+    vk::ImageView m_DragonTextureImageView;
+
     vk::Sampler m_TextureSampler;
 
     vk::Buffer m_VertexBuffer;
