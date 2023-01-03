@@ -148,6 +148,7 @@ add_custom_target(RendererShaders
 
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 
 # Workaround for older versions of GLM
@@ -192,6 +193,7 @@ target_link_libraries(Renderer
         ${CMAKE_DL_LIBS}
         glfw
         glm::glm
+        spdlog::spdlog_header_only
         Vulkan::Vulkan
 )
 

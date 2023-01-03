@@ -1,5 +1,6 @@
 #include "Utility.hpp"
 
+#include <fmt/format.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.hpp>
@@ -195,7 +196,8 @@ private:
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        m_Window = glfwCreateWindow(WindowWidth, WindowHeight, "Vulkan Renderer", nullptr, nullptr);
+        std::memcpy(m_Title.data(), DefaultTitle, std::size(DefaultTitle));
+        m_Window = glfwCreateWindow(WindowWidth, WindowHeight, m_Title.data(), nullptr, nullptr);
 
         if (!m_Window)
         {
@@ -1464,9 +1466,15 @@ private:
 
         while (!glfwWindowShouldClose(m_Window))
         {
-            m_DeltaTime = std::chrono::duration<float>(m_CurrentTick - m_LastTick).count();
+            m_FrameTimeSum -= m_FrameTimeSamples[m_FrameTimeSampleIndex];
+            m_FrameTimeSamples[m_FrameTimeSampleIndex] = std::chrono::duration<float>(m_CurrentTick - m_LastTick).count();
 
-            UpdateState(m_DeltaTime);
+            const float deltaTime = m_FrameTimeSamples[m_FrameTimeSampleIndex];
+            m_FrameTimeSampleIndex = (m_FrameTimeSampleIndex + 1) % m_FrameTimeSamples.size();
+            m_FrameTimeSum += deltaTime;
+            m_SmoothedFrameTime = m_FrameTimeSum / (float)m_FrameTimeSamples.size();
+
+            UpdateState(deltaTime);
             DrawFrame();
             glfwPollEvents();
 
@@ -1483,6 +1491,7 @@ private:
         const auto deltaY = static_cast<float>(m_MousePos.YPos - m_LastMousePos.YPos);
 
         UpdateCamera(deltaTime, deltaX, deltaY);
+        UpdateTitle();
 
         m_LastMousePos = m_MousePos;
     }
@@ -1580,6 +1589,36 @@ private:
 
             m_Camera.Position += moveAmount * glm::normalize(moveDirection);
         }
+    }
+
+    void UpdateTitle()
+    {
+        const auto result = fmt::format_to_n(
+            m_Title.begin(),
+            m_Title.size(),
+            "{} | Frame Time: {:>7.3f} ms | Position: ({:.2f}, {:.2f}, {:.2f}) | Heading: ({:.2f}, {:.2f}, {:.2f})",
+            DefaultTitle,
+            m_SmoothedFrameTime * 1000.0F,
+            m_Camera.Position.x,
+            m_Camera.Position.y,
+            m_Camera.Position.z,
+            m_Camera.Forward.x,
+            m_Camera.Forward.y,
+            m_Camera.Forward.z
+        );
+
+        if (std::size_t size = m_Title.size(); size < result.size)
+        {
+            m_Title[size - 3] = '.';
+            m_Title[size - 2] = '.';
+            m_Title[size - 1] = '\0';
+        }
+        else
+        {
+            *result.out = '\0';
+        }
+
+        glfwSetWindowTitle(m_Window, m_Title.data());
     }
 
     [[nodiscard]]
@@ -1935,6 +1974,11 @@ private:
 private:
     static constexpr std::uint32_t MaxFramesInFlight = 2;
 
+    static constexpr char DefaultTitle[] = "Vulkan Renderer";
+    static constexpr std::size_t MaxTitleLength = 256;
+
+    static constexpr std::size_t FrameTimeSampleCount = 64;
+
 private:
     std::filesystem::path m_ResourcesPath;
 
@@ -2000,7 +2044,10 @@ private:
 
     std::chrono::steady_clock::time_point m_LastTick;
     std::chrono::steady_clock::time_point m_CurrentTick;
-    float m_DeltaTime;
+    float m_FrameTimeSum = 0.0F;
+    float m_SmoothedFrameTime = 0.0F;
+    std::size_t m_FrameTimeSampleIndex = 0;
+    std::array<float, FrameTimeSampleCount> m_FrameTimeSamples = { };
 
     struct Mouse
     {
@@ -2024,6 +2071,8 @@ private:
     };
 
     Camera m_Camera;
+
+    std::array<char, MaxTitleLength> m_Title;
 };
 
 constexpr std::string_view ResourcesPathFlag = "--resources-path";
