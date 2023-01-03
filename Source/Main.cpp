@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -119,6 +120,7 @@ std::vector<const char *> GetRequiredExtensions()
 
 constexpr vk::DebugUtilsMessengerCreateInfoEXT ConsoleDebugMessengerInfo = {
     .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
+                     | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
                      | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
                      | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
 
@@ -137,6 +139,11 @@ public:
         vk::DynamicState::eViewport,
     };
 
+    void SetResourcesPath(const char *path)
+    {
+        m_ResourcesPath = path;
+    }
+
     void Run()
     {
         CreateWindow();
@@ -146,6 +153,11 @@ public:
     }
 
 private:
+    std::string GetResourcePath(const char *relativePath)
+    {
+        return (m_ResourcesPath / relativePath).string();
+    }
+
     void CreateWindow()
     {
         if (!glfwInit())
@@ -639,8 +651,8 @@ private:
 
     void CreateGraphicsPipeline()
     {
-        const auto vsBytecode = ReadFile(TEXTURE_VERT_SHADER_RELATIVE_PATH);
-        const auto fsBytecode = ReadFile(TEXTURE_FRAG_SHADER_RELATIVE_PATH);
+        const auto vsBytecode = ReadFile(GetResourcePath(TEXTURE_VERT_SHADER_RELATIVE_PATH).c_str());
+        const auto fsBytecode = ReadFile(GetResourcePath(TEXTURE_FRAG_SHADER_RELATIVE_PATH).c_str());
 
         const auto vsModule = CreateShaderModule(vsBytecode);
         const auto fsModule = CreateShaderModule(fsBytecode);
@@ -942,8 +954,8 @@ private:
     vk::Format FindDepthFormat()
     {
         constexpr std::array formats = {
-            vk::Format::eD32Sfloat,
             vk::Format::eD32SfloatS8Uint,
+            vk::Format::eD32Sfloat,
             vk::Format::eD24UnormS8Uint,
         };
 
@@ -980,7 +992,7 @@ private:
 
     void CreateTextureImage()
     {
-        const std::vector<char> fileBytes = ReadFile("Resources/Textures/Square_TestScreen_Raw.tga");
+        const std::vector<std::uint8_t> fileBytes = ReadFile(GetResourcePath("Textures/Square_TestScreen_Raw.tga").c_str());
         const Tga::File texture = Tga::File::CreateFrom(fileBytes);
         const vk::DeviceSize textureSize = texture.GetSize();
 
@@ -1146,10 +1158,10 @@ private:
     {
         constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
-        m_UniformBuffers.resize(m_MaxFramesInFlight);
-        m_UniformBuffersMemory.resize(m_MaxFramesInFlight);
+        m_UniformBuffers.resize(MaxFramesInFlight);
+        m_UniformBuffersMemory.resize(MaxFramesInFlight);
 
-        for (std::size_t i = 0; i < m_MaxFramesInFlight; ++i)
+        for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
             CreateBuffer(
                 bufferSize,
@@ -1166,16 +1178,16 @@ private:
         const auto poolSizes = std::to_array<vk::DescriptorPoolSize>({
             {
                 .type            = vk::DescriptorType::eUniformBuffer,
-                .descriptorCount = m_MaxFramesInFlight,
+                .descriptorCount = MaxFramesInFlight,
             },
             {
                 .type            = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = m_MaxFramesInFlight,
+                .descriptorCount = MaxFramesInFlight,
             },
         });
 
         const vk::DescriptorPoolCreateInfo poolInfo = {
-            .maxSets       = m_MaxFramesInFlight,
+            .maxSets       = MaxFramesInFlight,
             .poolSizeCount = static_cast<std::uint32_t>(poolSizes.size()),
             .pPoolSizes    = poolSizes.data(),
         };
@@ -1185,17 +1197,17 @@ private:
 
     void CreateDescriptorSets()
     {
-        const std::vector<vk::DescriptorSetLayout> layouts(m_MaxFramesInFlight, m_DescriptorSetLayout);
+        const std::vector<vk::DescriptorSetLayout> layouts(MaxFramesInFlight, m_DescriptorSetLayout);
 
         const vk::DescriptorSetAllocateInfo allocInfo = {
             .descriptorPool     = m_DescriptorPool,
-            .descriptorSetCount = m_MaxFramesInFlight,
+            .descriptorSetCount = MaxFramesInFlight,
             .pSetLayouts        = layouts.data(),
         };
 
         m_DescriptorSets = m_Device.allocateDescriptorSets(allocInfo);
 
-        for (std::size_t i = 0; i < m_MaxFramesInFlight; ++i)
+        for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
             const vk::DescriptorBufferInfo bufferInfo = {
                 .buffer = m_UniformBuffers[i],
@@ -1263,7 +1275,7 @@ private:
 
     void CreateCommandBuffers()
     {
-        const auto count = static_cast<std::uint32_t>(m_SwapChainFramebuffers.size());
+        const auto count = MaxFramesInFlight;
 
         const vk::CommandBufferAllocateInfo allocInfo = {
             .commandPool        = m_CommandPool,
@@ -1383,15 +1395,15 @@ private:
 
     void CreateSyncObjects()
     {
-        m_ImageAvailableSemaphores.reserve(m_MaxFramesInFlight);
-        m_RenderFinishedSemaphores.reserve(m_MaxFramesInFlight);
-        m_InFlightFences.reserve(m_MaxFramesInFlight);
+        m_ImageAvailableSemaphores.reserve(MaxFramesInFlight);
+        m_RenderFinishedSemaphores.reserve(MaxFramesInFlight);
+        m_InFlightFences.reserve(MaxFramesInFlight);
 
         const vk::FenceCreateInfo fenceInfo = {
             .flags = vk::FenceCreateFlagBits::eSignaled,
         };
 
-        for (std::uint32_t i = 0; i < m_MaxFramesInFlight; ++i)
+        for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
             m_ImageAvailableSemaphores.push_back(m_Device.createSemaphore({ }));
             m_RenderFinishedSemaphores.push_back(m_Device.createSemaphore({ }));
@@ -1399,7 +1411,7 @@ private:
         }
     }
 
-    vk::ShaderModule CreateShaderModule(const std::vector<char> &code)
+    vk::ShaderModule CreateShaderModule(std::span<const std::uint8_t> code)
     {
         const vk::ShaderModuleCreateInfo createInfo = {
             .codeSize = static_cast<std::uint32_t>(code.size()),
@@ -1428,18 +1440,16 @@ private:
             std::numeric_limits<std::uint64_t>::max()
         );
 
-        // Have to use the C interface since the C++ one annoyingly throws an exception for eErrorOutOfDateKHR
         std::uint32_t imageIndex = 0;
-        const vk::Result acquireNextImageResult =
+        switch (
             m_Device.acquireNextImageKHR(
                 m_SwapChain,
                 std::numeric_limits<std::uint64_t>::max(),
                 m_ImageAvailableSemaphores[m_CurrentFrameIndex],
                 nullptr,
                 &imageIndex
-            );
-
-        switch (acquireNextImageResult)
+            )
+        )
         {
         case vk::Result::eSuccess:
         case vk::Result::eSuboptimalKHR:
@@ -1490,7 +1500,6 @@ private:
         };
 
         const vk::Result presentResult = m_PresentQueue.presentKHR(&presentInfo);
-
         if (presentResult == vk::Result::eSuboptimalKHR
             || presentResult == vk::Result::eErrorOutOfDateKHR
             || m_IsFramebufferResized)
@@ -1502,7 +1511,7 @@ private:
             throw std::runtime_error("Failed to present swapchain image");
         }
 
-        m_CurrentFrameIndex = (m_CurrentFrameIndex + 1) % m_MaxFramesInFlight;
+        m_CurrentFrameIndex = (m_CurrentFrameIndex + 1) % MaxFramesInFlight;
     }
 
     void TransitionImageLayout(vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout)
@@ -1643,7 +1652,7 @@ private:
         m_Device.destroy(m_TextureImage);
         m_Device.free(m_TextureImageMemory);
 
-        for (std::size_t i = 0; i < m_MaxFramesInFlight; ++i)
+        for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
             m_Device.destroy(m_UniformBuffers[i]);
             m_Device.free(m_UniformBuffersMemory[i]);
@@ -1659,7 +1668,7 @@ private:
         m_Device.destroy(m_IndexBuffer);
         m_Device.free(m_IndexBufferMemory);
 
-        for (std::uint32_t i = 0; i < m_MaxFramesInFlight; ++i)
+        for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
             m_Device.destroy(m_ImageAvailableSemaphores[i]);
             m_Device.destroy(m_RenderFinishedSemaphores[i]);
@@ -1701,8 +1710,8 @@ private:
                 glfwSetWindowMonitor(
                     window,
                     nullptr,
-                    app->m_LastXPosition,
-                    app->m_LastYPosition,
+                    app->m_WindowLastXPosition,
+                    app->m_WindowLastYPosition,
                     WindowWidth,
                     WindowHeight,
                     GLFW_DONT_CARE
@@ -1712,7 +1721,7 @@ private:
             {
                 GLFWmonitor *monitor = glfwGetPrimaryMonitor();
                 const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-                glfwGetWindowPos(window, &app->m_LastXPosition, &app->m_LastYPosition);
+                glfwGetWindowPos(window, &app->m_WindowLastXPosition, &app->m_WindowLastYPosition);
                 glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, GLFW_DONT_CARE);
             }
 
@@ -1765,14 +1774,19 @@ private:
     }
 
 private:
+    static constexpr std::uint32_t MaxFramesInFlight = 2;
+
+private:
+    std::filesystem::path m_ResourcesPath;
+
+    vk::DynamicLoader m_Loader;
+
     bool m_IsFullscreen = false;
     bool m_IsFramebufferResized = false;
-    int m_LastXPosition = 0;
-    int m_LastYPosition = 0;
-    std::uint32_t m_MaxFramesInFlight = 2;
-    std::uint32_t m_CurrentFrameIndex = 0;
-    vk::DynamicLoader m_Loader;
+    int m_WindowLastXPosition = 0;
+    int m_WindowLastYPosition = 0;
     GLFWwindow *m_Window = nullptr;
+
     vk::Instance m_Instance;
     vk::DebugUtilsMessengerEXT m_DebugMessenger;
     vk::SurfaceKHR m_Surface;
@@ -1780,42 +1794,86 @@ private:
     vk::Device m_Device;
     vk::Queue m_GraphicsQueue;
     vk::Queue m_PresentQueue;
+
     vk::Format m_SwapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D m_SwapChainExtent;
     vk::SwapchainKHR m_SwapChain;
     vk::SwapchainKHR m_OldSwapChain;
     std::vector<vk::Image> m_SwapChainImages;
     std::vector<vk::ImageView> m_SwapChainImageViews;
+
     vk::RenderPass m_RenderPass;
+
     vk::DescriptorSetLayout m_DescriptorSetLayout;
     vk::PipelineLayout m_PipelineLayout;
     vk::Pipeline m_GraphicsPipeline;
+
     std::vector<vk::Framebuffer> m_SwapChainFramebuffers;
+
     vk::CommandPool m_CommandPool;
+
     vk::Image m_DepthImage;
     vk::DeviceMemory m_DepthImageMemory;
     vk::ImageView m_DepthImageView;
+
     vk::Image m_TextureImage;
     vk::DeviceMemory m_TextureImageMemory;
     vk::ImageView m_TextureImageView;
     vk::Sampler m_TextureSampler;
+
     vk::Buffer m_VertexBuffer;
     vk::DeviceMemory m_VertexBufferMemory;
+
     vk::Buffer m_IndexBuffer;
     vk::DeviceMemory m_IndexBufferMemory;
+
     std::vector<vk::Buffer> m_UniformBuffers;
     std::vector<vk::DeviceMemory> m_UniformBuffersMemory;
+
     vk::DescriptorPool m_DescriptorPool;
     std::vector<vk::DescriptorSet> m_DescriptorSets;
+
+    std::uint32_t m_CurrentFrameIndex = 0;
     std::vector<vk::CommandBuffer> m_CommandBuffers;
     std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
     std::vector<vk::Fence> m_InFlightFences;
 };
 
-int main()
+constexpr std::string_view ResourcesPathFlag = "--resources-path";
+constexpr char FlagDelimiter = '=';
+
+int main(int argc, char *argv[])
 {
+    --argc;
+    ++argv;
+
     Application app;
+
+    for (int i = 0; i < argc; ++i)
+    {
+        const std::string_view arg = argv[i];
+        if (arg.starts_with(ResourcesPathFlag))
+        {
+            if (const std::size_t delimiterIndex = arg.find(FlagDelimiter); delimiterIndex != std::string_view::npos)
+            {
+                if (const std::string_view path = arg.substr(delimiterIndex + 1); !path.empty())
+                {
+                    app.SetResourcesPath(path.data());
+                }
+            }
+            else
+            {
+                std::cerr << "\"" << ResourcesPathFlag << "\" was specified, but no value was given\n";
+                std::cerr << "Usage: " << ResourcesPathFlag << FlagDelimiter << "{ABSOLUTE_PATH_TO_DIR}\n";
+                return EXIT_FAILURE;
+            }
+        }
+        else
+        {
+            std::cerr << "Unrecognised argument: \"" << arg << "\" - ignoring\n";
+        }
+    }
 
     try
     {

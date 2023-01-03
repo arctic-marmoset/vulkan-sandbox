@@ -106,9 +106,9 @@ namespace vkm
     }
 }
 
-inline std::vector<char> ReadFile(const char *filepath)
+inline std::vector<std::uint8_t> ReadFile(const char *filepath)
 {
-    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+    std::basic_ifstream<std::uint8_t> file(filepath, std::ios::binary | std::ios::ate);
 
     if (!file)
     {
@@ -119,7 +119,7 @@ inline std::vector<char> ReadFile(const char *filepath)
     file.seekg(0, std::ios::beg);
     const auto start = file.tellg();
 
-    std::vector<char> buffer;
+    std::vector<std::uint8_t> buffer;
 
     const auto size = static_cast<std::size_t>(end - start);
 
@@ -250,7 +250,7 @@ namespace Tga
             return ((static_cast<std::size_t>(Width) * ColorDepth + 31) / 32) * 4 * Height;
         }
 
-        static File CreateFrom(std::span<const char> bytes)
+        static File CreateFrom(std::span<const std::uint8_t> bytes)
         {
             static_assert(std::endian::native == std::endian::little, "Big-endian systems are not yet supported");
 

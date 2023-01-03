@@ -15,27 +15,27 @@ message(STATUS "IPO supported: ${IPO_SUPPORTED}")
 
 if(MSVC)
     string(REGEX REPLACE "[-/]W[1-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(SANDBOX_REQUIRED_WARN_FLAGS /W4 /permissive-)
+    set(RENDERER_REQUIRED_WARN_FLAGS /W4 /permissive-)
 else()
-    set(SANDBOX_REQUIRED_WARN_FLAGS -Wall -Wextra -Wpedantic -Wnon-virtual-dtor)
+    set(RENDERER_REQUIRED_WARN_FLAGS -Wall -Wextra -Wpedantic -Wnon-virtual-dtor)
 endif()
 
-option(SANDBOX_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
+option(RENDERER_TREAT_WARN_AS_ERROR "Treat compiler warnings as errors" FALSE)
 
-if(SANDBOX_TREAT_WARN_AS_ERROR)
+if(RENDERER_TREAT_WARN_AS_ERROR)
     if(MSVC)
-        list(APPEND SANDBOX_REQUIRED_WARN_FLAGS /Wx)
+        list(APPEND RENDERER_REQUIRED_WARN_FLAGS /Wx)
     else()
-        list(APPEND SANDBOX_REQUIRED_WARN_FLAGS -Werror -pedantic-errors)
+        list(APPEND RENDERER_REQUIRED_WARN_FLAGS -Werror -pedantic-errors)
     endif()
 endif()
 
 # See: https://github.com/cpp-best-practices/cppbestpractices.
-option(SANDBOX_USE_EXTENSIVE_WARNINGS "Enable warnings recommended by C++ Best Practices" TRUE)
+option(RENDERER_USE_EXTENSIVE_WARNINGS "Enable warnings recommended by C++ Best Practices" TRUE)
 
-if(SANDBOX_USE_EXTENSIVE_WARNINGS)
+if(RENDERER_USE_EXTENSIVE_WARNINGS)
     if(MSVC)
-        set(SANDBOX_EXTRA_WARN_FLAGS
+        set(RENDERER_EXTRA_WARN_FLAGS
             /w14242 # possible loss of data: conversion from `type1` to `type2`
             /w14254 # possible loss of data: conversion from `type1:field_bits`
                     # to `type2:field_bits`
@@ -66,7 +66,7 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
                     # conversion has been implicitly applied
         )
     else()
-        set(SANDBOX_EXTRA_WARN_FLAGS
+        set(RENDERER_EXTRA_WARN_FLAGS
             -Wcast-align
             -Wunused
             -Woverloaded-virtual
@@ -80,19 +80,21 @@ if(SANDBOX_USE_EXTENSIVE_WARNINGS)
     endif()
 
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        list(APPEND SANDBOX_EXTRA_WARN_FLAGS
+        list(APPEND RENDERER_EXTRA_WARN_FLAGS
             -Wduplicated-cond
             -Wduplicated-branches
             -Wuseless-cast
             -Wlogical-op
         )
     elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-        list(APPEND SANDBOX_EXTRA_WARN_FLAGS
+        list(APPEND RENDERER_EXTRA_WARN_FLAGS
             -Wimplicit-fallthrough
             -Wshorten-64-to-32
         )
     endif()
 endif()
+
+set(RESOURCES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 
 find_program(GLSL_VALIDATOR glslc REQUIRED)
 
@@ -111,13 +113,14 @@ foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
     get_filename_component(FILE_NAME_WITH_EXT ${RELATIVE_SOURCE_PATH} NAME)
     get_filename_component(FILE_DIR ${RELATIVE_SOURCE_PATH} DIRECTORY)
     string(REGEX
-        REPLACE "^Source/" "Resources/"
-        RESOURCES_FILE_DIR
+        REPLACE "^Source/" ""
+        RESOURCES_RELATIVE_FILE_DIR
         ${FILE_DIR}
     )
+    set(RESOURCES_RELATIVE_FILE_DIR "${RESOURCES_RELATIVE_FILE_DIR}/$<CONFIG>")
 
     set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/${RELATIVE_SOURCE_PATH}")
-    set(OUTPUT_DIR "${PROJECT_BINARY_DIR}/${RESOURCES_FILE_DIR}")
+    set(OUTPUT_DIR "${RESOURCES_DIR}/${RESOURCES_RELATIVE_FILE_DIR}")
 
     set(OUTPUT_FILE_WITH_EXT "${FILE_NAME_WITH_EXT}.spv")
     set(OUTPUT_FILE_PATH "${OUTPUT_DIR}/${OUTPUT_FILE_WITH_EXT}")
@@ -125,7 +128,7 @@ foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
     add_custom_command(
         OUTPUT ${OUTPUT_FILE_PATH}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -o ${OUTPUT_FILE_PATH}
+        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -g -o ${OUTPUT_FILE_PATH}
         DEPENDS ${SOURCE_PATH}
         VERBATIM
     )
@@ -135,16 +138,12 @@ foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
     string(MAKE_C_IDENTIFIER ${FILE_NAME_WITH_EXT} FILE_NAME_ESCAPED)
     string(TOUPPER ${FILE_NAME_ESCAPED} FILE_NAME_UPPER)
     list(APPEND RENDERER_SHADER_BYTECODE_PATH_DEFINES
-        "${FILE_NAME_UPPER}_SHADER_RELATIVE_PATH=\"${RESOURCES_FILE_DIR}/${OUTPUT_FILE_WITH_EXT}\""
+        "${FILE_NAME_UPPER}_SHADER_RELATIVE_PATH=\"${RESOURCES_RELATIVE_FILE_DIR}/${OUTPUT_FILE_WITH_EXT}\""
     )
 endforeach()
 
 add_custom_target(RendererShaders
     DEPENDS ${SPIRV_BYTECODE}
-)
-
-add_custom_target(RendererResources
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/Resources ${PROJECT_BINARY_DIR}/resources
 )
 
 find_package(glfw3 CONFIG REQUIRED)
@@ -176,7 +175,6 @@ target_include_directories(Renderer
 
 add_dependencies(Renderer
     RendererShaders
-    RendererResources
 )
 
 target_compile_definitions(Renderer
@@ -199,8 +197,8 @@ target_link_libraries(Renderer
 
 target_compile_options(Renderer
     PRIVATE
-        ${SANDBOX_REQUIRED_WARN_FLAGS}
-        ${SANDBOX_EXTRA_WARN_FLAGS}
+        ${RENDERER_REQUIRED_WARN_FLAGS}
+        ${RENDERER_EXTRA_WARN_FLAGS}
 )
 
 # CMake flags for Release builds are suboptimal.

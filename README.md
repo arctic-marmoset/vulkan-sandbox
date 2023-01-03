@@ -13,7 +13,7 @@ still be installed manually:
 
 | Dependency                                         | Version Used in Project |
 |----------------------------------------------------|-------------------------|
-| A C++ compiler with C++20 support                  | `15.0.5 (clang)`        |
+| A C++ compiler with C++23 support                  | `15.0.5 (clang)`        |
 | [vcpkg](https://github.com/microsoft/vcpkg) itself | -                       |
 | [CMake](https://cmake.org/download/)               | `3.24.0`                |
 | [Vulkan SDK](https://vulkan.lunarg.com/)           | `1.3.236`               |
@@ -40,17 +40,20 @@ cmake --preset {preset}
 
 ## Build
 ```
-cmake --build build/{preset}
+cmake --build Build/{preset}
 ```
 
 ## Run
 ```
-cd {projectRoot}/build/{preset}
-./renderer
+{projectRoot}/Build/{preset}/Renderer --resources-path="{ABSOLUTE_PATH_TO_RESOURCES_DIR}"
 ```
 
-Note the directory change. This is necessary since the program expects resources
-to be located relative to the binary directory.
+The "--resources-path" flag is necessary during development since the
+Resources directory and the executable will not be in the same directory. Note
+that the quotes are required.
+
+If using CLion, you can take advantage of the `$ProjectFileDir$` macro in
+Run/Debug Configurations &rarr; Program arguments.
 
 # Progress Preview
 
