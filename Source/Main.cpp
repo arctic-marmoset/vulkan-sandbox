@@ -2066,7 +2066,7 @@ private:
 
         glm::vec3 Position = { 0.0F, 0.0F, 0.0F };
 
-        float Yaw   = 3.0F * glm::half_pi<float>();
+        float Yaw   = glm::half_pi<float>();
         float Pitch = 0.0F;
     };
 
