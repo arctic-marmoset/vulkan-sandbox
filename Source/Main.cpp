@@ -1559,10 +1559,17 @@ private:
     static void CursorPositionCallback(GLFWwindow *window, double xPos, double yPos)
     {
         auto *app = static_cast<::Application *>(glfwGetWindowUserPointer(window));
+
         app->m_MousePos = {
             .XPos = xPos,
             .YPos = yPos,
         };
+
+        if (app->m_IsFirstMouseMovement)
+        {
+            app->m_IsFirstMouseMovement = false;
+            app->m_LastMousePos = app->m_MousePos;
+        }
     }
 
     static bool IsRequiredExtensionsSupported(const vk::PhysicalDevice &device)
@@ -1695,6 +1702,7 @@ private:
 
     Mouse m_LastMousePos = { };
     Mouse m_MousePos = { };
+    bool m_IsFirstMouseMovement = true;
 
     Camera m_Camera;
 
