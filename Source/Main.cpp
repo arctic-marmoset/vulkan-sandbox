@@ -1,3 +1,4 @@
+#include "Device.hpp"
 #include "Utility.hpp"
 
 #include <fmt/format.h>
@@ -26,15 +27,81 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
+constexpr std::array<const char *, 1> DeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+struct Vertex
+{
+    glm::vec3 Position;
+    glm::vec2 TexCoord;
+
+    static constexpr vk::VertexInputBindingDescription GetBindingDescription()
+    {
+        return {
+            .binding   = 0,
+            .stride    = sizeof(Vertex),
+            .inputRate = vk::VertexInputRate::eVertex,
+        };
+    }
+
+    static constexpr auto GetAttributeDescriptions()
+    {
+        return std::to_array<vk::VertexInputAttributeDescription>({
+            {
+                .location = 0,
+                .binding  = 0,
+                .format   = vk::Format::eR32G32B32Sfloat,
+                .offset   = offsetof(Vertex, Position),
+            },
+            {
+                .location = 1,
+                .binding  = 0,
+                .format   = vk::Format::eR32G32Sfloat,
+                .offset   = offsetof(Vertex, TexCoord),
+            },
+        });
+    }
+};
+
+struct Model
+{
+    struct
+    {
+        vk::Buffer Buffer;
+        vk::DeviceMemory Memory;
+    } Vertices;
+
+    struct
+    {
+        std::uint32_t Count = 0;
+        vk::Buffer Buffer;
+        vk::DeviceMemory Memory;
+    } Indices;
+
+    struct
+    {
+        vk::Image Image;
+        vk::DeviceMemory Memory;
+        vk::ImageView View;
+    } Texture;
+
+    void Init(vk::Device device, const char *meshPath, const char *texturePath)
+    {
+
+    }
+
+    void Destroy(vk::Device device)
+    {
+
+    }
+};
+
 constexpr std::uint32_t WindowWidth = 1280;
 constexpr std::uint32_t WindowHeight = 720;
 
 constexpr std::array<const char *, 1> ValidationLayers = {
     "VK_LAYER_KHRONOS_validation",
-};
-
-constexpr std::array<const char *, 1> DeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 constexpr bool IsDebugMode = true;
@@ -223,8 +290,8 @@ private:
         CreateInstance();
         AttachDebugMessenger();
         CreateSurface();
-        SelectPhysicalDevice();
-        CreateLogicalDevice();
+        const auto [physicalDevice, queueFamilyIndices] = SelectPhysicalDevice(m_Instance);
+        m_Device.Init(physicalDevice, queueFamilyIndices, DeviceExtensions);
         CreateSwapChain();
         CreateImageViews();
         CreateRenderPass();
@@ -308,136 +375,47 @@ private:
         m_Surface = surface;
     }
 
-    void SelectPhysicalDevice()
+    [[nodiscard]]
+    std::pair<vk::PhysicalDevice, Device::QueueFamilyIndices> SelectPhysicalDevice(vk::Instance instance)
     {
-        const auto devices = m_Instance.enumeratePhysicalDevices();
+        const auto devices = instance.enumeratePhysicalDevices();
 
         if (devices.empty())
         {
             throw std::runtime_error("Failed to find a GPU with Vulkan support");
         }
 
-        const auto candidate = std::ranges::find_if(devices, [this](const vk::PhysicalDevice &device)
+        Device::QueueFamilyIndices indices;
+        SwapChainSupportDetails details;
+        for (const vk::PhysicalDevice &device : devices)
         {
-            return IsDeviceSuitable(device);
-        });
+            indices = Device::QueueFamilyIndices::Find(device, m_Surface);
+            details = QuerySwapChainSupport(device, m_Surface);
 
-        if (candidate == devices.end())
-        {
-            throw std::runtime_error("Failed to find a GPU suitable for this Application");
+            if (IsRequiredExtensionsSupported(device)
+                && indices.IsComplete()
+                && (!details.Formats.empty() && !details.PresentModes.empty()))
+            {
+                return { device, indices };
+            }
         }
 
-        m_PhysicalDevice = *candidate;
-    }
-
-    bool IsDeviceSuitable(const vk::PhysicalDevice &device)
-    {
-        const auto indices = FindQueueFamilies(device);
-
-        const bool isRequiredExtensionsSupported = IsRequiredExtensionsSupported(device);
-
-        const bool isSwapChainAdequate =
-            isRequiredExtensionsSupported
-            && ([&]
-            {
-                const auto details = QuerySwapChainSupport(device);
-                return !details.Formats.empty() && !details.PresentModes.empty();
-            }());
-
-        const vk::PhysicalDeviceFeatures supportedFeatures = device.getFeatures();
-
-        return indices.IsComplete()
-               && isSwapChainAdequate
-               && supportedFeatures.samplerAnisotropy;
+        throw std::runtime_error("Failed to find a GPU suitable for this application");
     }
 
     [[nodiscard]]
-    QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice &device) const
-    {
-        QueueFamilyIndices indices;
-
-        const std::vector<vk::QueueFamilyProperties> queueFamiliesProperties = device.getQueueFamilyProperties();
-
-        for (std::uint32_t i = 0; i < queueFamiliesProperties.size(); ++i)
-        {
-            const auto &queueFamilyProperties = queueFamiliesProperties[i];
-
-            if (queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
-            {
-                indices.Graphics = i;
-            }
-
-            const vk::Bool32 isPresentToSurfaceSupported = device.getSurfaceSupportKHR(i, m_Surface);
-
-            if (isPresentToSurfaceSupported)
-            {
-                indices.Present = i;
-            }
-
-            if (indices.IsComplete())
-            {
-                break;
-            }
-        }
-
-        return indices;
-    }
-
-    void CreateLogicalDevice()
-    {
-        const QueueFamilyIndices indices = FindQueueFamilies(m_PhysicalDevice);
-
-        constexpr float queuePriority = 1.0F;
-
-        const std::set uniqueQueueFamilies = {
-            indices.Graphics.value(),
-            indices.Present.value(),
-        };
-
-        std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        queueCreateInfos.reserve(uniqueQueueFamilies.size());
-
-        for (auto queueFamily : uniqueQueueFamilies)
-        {
-            queueCreateInfos.push_back({
-                .queueFamilyIndex = queueFamily,
-                .queueCount       = 1,
-                .pQueuePriorities = &queuePriority,
-            });
-        }
-
-        const vk::PhysicalDeviceFeatures deviceFeatures = {
-            .samplerAnisotropy = VK_TRUE,
-        };
-
-        const vk::DeviceCreateInfo createInfo = {
-            .queueCreateInfoCount    = static_cast<std::uint32_t>(queueCreateInfos.size()),
-            .pQueueCreateInfos       = queueCreateInfos.data(),
-            .enabledExtensionCount   = static_cast<std::uint32_t>(DeviceExtensions.size()),
-            .ppEnabledExtensionNames = DeviceExtensions.data(),
-            .pEnabledFeatures        = &deviceFeatures,
-        };
-
-        m_Device = m_PhysicalDevice.createDevice(createInfo);
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
-
-        m_GraphicsQueue = m_Device.getQueue(indices.Graphics.value(), 0);
-        m_PresentQueue = m_Device.getQueue(indices.Present.value(), 0);
-    }
-
-    [[nodiscard]]
-    SwapChainSupportDetails QuerySwapChainSupport(const vk::PhysicalDevice &device) const
+    static SwapChainSupportDetails QuerySwapChainSupport(const vk::PhysicalDevice &device, vk::SurfaceKHR surface)
     {
         return {
-            .Capabilities = device.getSurfaceCapabilitiesKHR(m_Surface),
-            .Formats      = device.getSurfaceFormatsKHR(m_Surface),
-            .PresentModes = device.getSurfacePresentModesKHR(m_Surface),
+            .Capabilities = device.getSurfaceCapabilitiesKHR(surface),
+            .Formats      = device.getSurfaceFormatsKHR(surface),
+            .PresentModes = device.getSurfacePresentModesKHR(surface),
         };
     }
 
     void CreateSwapChain()
     {
-        const auto swapChainSupport = QuerySwapChainSupport(m_PhysicalDevice);
+        const auto swapChainSupport = QuerySwapChainSupport(m_Device.GetPhysicalDevice(), m_Surface);
 
         const auto surfaceFormat = SelectSwapSurfaceFormat(swapChainSupport.Formats);
         const auto presentMode = SelectSwapPresentMode(swapChainSupport.PresentModes);
@@ -450,15 +428,9 @@ private:
             ? desiredImageCount
             : std::min(desiredImageCount, maxImageCount);
 
-        const auto indices = FindQueueFamilies(m_PhysicalDevice);
-
-        const std::array queueFamilyIndices = {
-            indices.Graphics.value(),
-            indices.Present.value(),
-        };
+        const std::array queueFamilyIndices = m_Device.GetQueueFamilyIndices().ToArray();
 
         m_OldSwapChain = m_SwapChain;
-
         const auto createInfo = ([&]
         {
             vk::SwapchainCreateInfoKHR result = {
@@ -475,7 +447,7 @@ private:
                 .oldSwapchain     = m_OldSwapChain,
             };
 
-            if (indices.Graphics != indices.Present)
+            if (m_Device.GetQueueFamilyIndices().Graphics != m_Device.GetQueueFamilyIndices().Present)
             {
                 result.imageSharingMode = vk::SharingMode::eConcurrent;
                 result.queueFamilyIndexCount = 2;
@@ -492,8 +464,8 @@ private:
         m_SwapChainImageFormat = surfaceFormat.format;
         m_SwapChainExtent = extent;
 
-        m_SwapChain = m_Device.createSwapchainKHR(createInfo);
-        m_SwapChainImages = m_Device.getSwapchainImagesKHR(m_SwapChain);
+        m_SwapChain = m_Device.GetHandle().createSwapchainKHR(createInfo);
+        m_SwapChainImages = m_Device.GetHandle().getSwapchainImagesKHR(m_SwapChain);
     }
 
     [[nodiscard]]
@@ -536,7 +508,7 @@ private:
             },
         };
 
-        return m_Device.createImageView(createInfo);
+        return m_Device.GetHandle().createImageView(createInfo);
     }
 
     void CreateImageViews()
@@ -646,7 +618,7 @@ private:
             .pDependencies   = dependencies.data(),
         };
 
-        m_RenderPass = m_Device.createRenderPass(renderPassCreateInfo);
+        m_RenderPass = m_Device.GetHandle().createRenderPass(renderPassCreateInfo);
     }
 
     void CreateDescriptorSetLayout()
@@ -663,7 +635,7 @@ private:
             .pBindings    = &uboLayoutBinding,
         };
 
-        m_UboDescriptorSetLayout = m_Device.createDescriptorSetLayout(uboLayoutInfo);
+        m_UboDescriptorSetLayout = m_Device.GetHandle().createDescriptorSetLayout(uboLayoutInfo);
 
         const vk::DescriptorSetLayoutBinding samplerLayoutBinding = {
             .binding         = 0, // layout(set = 1, binding = 0) uniform sampler2D texSampler.
@@ -677,7 +649,7 @@ private:
             .pBindings    = &samplerLayoutBinding,
         };
 
-        m_SamplerDescriptorSetLayout = m_Device.createDescriptorSetLayout(samplerLayoutInfo);
+        m_SamplerDescriptorSetLayout = m_Device.GetHandle().createDescriptorSetLayout(samplerLayoutInfo);
     }
 
     void CreateGraphicsPipeline()
@@ -765,7 +737,7 @@ private:
             .pSetLayouts    = descriptorSetLayouts.data(),
         };
 
-        m_PipelineLayout = m_Device.createPipelineLayout(pipelineLayoutCreateInfo);
+        m_PipelineLayout = m_Device.GetHandle().createPipelineLayout(pipelineLayoutCreateInfo);
 
         const vk::PipelineDynamicStateCreateInfo dynamicStateCreateInfo = {
             .dynamicStateCount = static_cast<std::uint32_t>(DynamicStates.size()),
@@ -788,7 +760,7 @@ private:
             .subpass             = 0,
         };
 
-        const auto [result, pipeline] = m_Device.createGraphicsPipeline({ }, pipelineCreateInfo);
+        const auto [result, pipeline] = m_Device.GetHandle().createGraphicsPipeline({ }, pipelineCreateInfo);
 
         if (result != vk::Result::eSuccess)
         {
@@ -797,8 +769,8 @@ private:
 
         m_GraphicsPipeline = pipeline;
 
-        m_Device.destroy(vsModule);
-        m_Device.destroy(fsModule);
+        m_Device.GetHandle().destroy(vsModule);
+        m_Device.GetHandle().destroy(fsModule);
     }
 
     void CreateFramebuffers()
@@ -821,21 +793,19 @@ private:
                 .layers          = 1,
             };
 
-            const auto framebuffer = m_Device.createFramebuffer(createInfo);
+            const auto framebuffer = m_Device.GetHandle().createFramebuffer(createInfo);
             m_SwapChainFramebuffers.push_back(framebuffer);
         }
     }
 
     void CreateCommandPool()
     {
-        const QueueFamilyIndices indices = FindQueueFamilies(m_PhysicalDevice);
-
         const vk::CommandPoolCreateInfo createInfo = {
             .flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = indices.Graphics.value(),
+            .queueFamilyIndex = m_Device.GetQueueFamilyIndices().Graphics,
         };
 
-        m_CommandPool = m_Device.createCommandPool(createInfo);
+        m_CommandPool = m_Device.GetHandle().createCommandPool(createInfo);
     }
 
     void CreateBuffer(
@@ -852,9 +822,9 @@ private:
             .sharingMode = vk::SharingMode::eExclusive,
         };
 
-        buffer = m_Device.createBuffer(bufferInfo);
+        buffer = m_Device.GetHandle().createBuffer(bufferInfo);
 
-        const vk::MemoryRequirements memoryRequirements = m_Device.getBufferMemoryRequirements(buffer);
+        const vk::MemoryRequirements memoryRequirements = m_Device.GetHandle().getBufferMemoryRequirements(buffer);
 
         const std::uint32_t memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties);
 
@@ -863,8 +833,8 @@ private:
             .memoryTypeIndex = memoryTypeIndex,
         };
 
-        bufferMemory = m_Device.allocateMemory(allocateInfo);
-        m_Device.bindBufferMemory(buffer, bufferMemory, 0);
+        bufferMemory = m_Device.GetHandle().allocateMemory(allocateInfo);
+        m_Device.GetHandle().bindBufferMemory(buffer, bufferMemory, 0);
     }
 
     void CopyBuffer(vk::CommandBuffer commandBuffer, vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
@@ -938,17 +908,17 @@ private:
             .sharingMode = vk::SharingMode::eExclusive,
         };
 
-        image = m_Device.createImage(createInfo);
+        image = m_Device.GetHandle().createImage(createInfo);
 
-        const vk::MemoryRequirements memoryRequirements = m_Device.getImageMemoryRequirements(image);
+        const vk::MemoryRequirements memoryRequirements = m_Device.GetHandle().getImageMemoryRequirements(image);
 
         const vk::MemoryAllocateInfo allocInfo = {
             .allocationSize = memoryRequirements.size,
             .memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties),
         };
 
-        imageMemory = m_Device.allocateMemory(allocInfo);
-        m_Device.bindImageMemory(image, imageMemory, 0);
+        imageMemory = m_Device.GetHandle().allocateMemory(allocInfo);
+        m_Device.GetHandle().bindImageMemory(image, imageMemory, 0);
     }
 
     template<typename InputIterator>
@@ -966,7 +936,7 @@ private:
 
         for (auto it = begin; it != end; ++it)
         {
-            const vk::FormatProperties properties = m_PhysicalDevice.getFormatProperties(*it);
+            const vk::FormatProperties properties = m_Device.GetPhysicalDevice().getFormatProperties(*it);
             if (tiling == vk::ImageTiling::eLinear
                 && (properties.linearTilingFeatures & features) == features)
             {
@@ -1040,10 +1010,10 @@ private:
             arenaVerticesStagingBufferMemory
         );
 
-        if (void *data = m_Device.mapMemory(arenaVerticesStagingBufferMemory, 0, arenaVerticesSize))
+        if (void *data = m_Device.GetHandle().mapMemory(arenaVerticesStagingBufferMemory, 0, arenaVerticesSize))
         {
             std::memcpy(data, ArenaVertices.data(), arenaVerticesSize);
-            m_Device.unmapMemory(arenaVerticesStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(arenaVerticesStagingBufferMemory);
         }
         else
         {
@@ -1075,10 +1045,10 @@ private:
             arenaIndicesStagingBufferMemory
         );
 
-        if (void *data = m_Device.mapMemory(arenaIndicesStagingBufferMemory, 0, arenaIndicesSize))
+        if (void *data = m_Device.GetHandle().mapMemory(arenaIndicesStagingBufferMemory, 0, arenaIndicesSize))
         {
             std::memcpy(data, ArenaIndices.data(), arenaIndicesSize);
-            m_Device.unmapMemory(arenaIndicesStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(arenaIndicesStagingBufferMemory);
         }
         else
         {
@@ -1158,10 +1128,10 @@ private:
             dragonVerticesStagingBufferMemory
         );
 
-        if (void *data = m_Device.mapMemory(dragonVerticesStagingBufferMemory, 0, dragonVerticesSize))
+        if (void *data = m_Device.GetHandle().mapMemory(dragonVerticesStagingBufferMemory, 0, dragonVerticesSize))
         {
             std::memcpy(data, m_DragonVertices.data(), dragonVerticesSize);
-            m_Device.unmapMemory(dragonVerticesStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(dragonVerticesStagingBufferMemory);
         }
         else
         {
@@ -1193,10 +1163,10 @@ private:
             dragonIndicesStagingBufferMemory
         );
 
-        if (void *data = m_Device.mapMemory(dragonIndicesStagingBufferMemory, 0, dragonIndicesSize))
+        if (void *data = m_Device.GetHandle().mapMemory(dragonIndicesStagingBufferMemory, 0, dragonIndicesSize))
         {
             std::memcpy(data, m_DragonIndices.data(), dragonIndicesSize);
-            m_Device.unmapMemory(dragonIndicesStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(dragonIndicesStagingBufferMemory);
         }
         else
         {
@@ -1230,10 +1200,10 @@ private:
             missingTextureStagingBufferMemory
         );
 
-        if (void *const data = m_Device.mapMemory(missingTextureStagingBufferMemory, 0, missingTexture.GetSize()))
+        if (void *const data = m_Device.GetHandle().mapMemory(missingTextureStagingBufferMemory, 0, missingTexture.GetSize()))
         {
             std::memcpy(data, missingTexture.Pixels.data(), missingTexture.Pixels.size());
-            m_Device.unmapMemory(missingTextureStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(missingTextureStagingBufferMemory);
         }
         else
         {
@@ -1288,10 +1258,10 @@ private:
             dragonTextureStagingBufferMemory
         );
 
-        if (void *const data = m_Device.mapMemory(dragonTextureStagingBufferMemory, 0, dragonTexture.GetSize()))
+        if (void *const data = m_Device.GetHandle().mapMemory(dragonTextureStagingBufferMemory, 0, dragonTexture.GetSize()))
         {
             std::memcpy(data, dragonTexture.Pixels.data(), dragonTexture.Pixels.size());
-            m_Device.unmapMemory(dragonTextureStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(dragonTextureStagingBufferMemory);
         }
         else
         {
@@ -1333,23 +1303,23 @@ private:
 
         EndOneTimeCommands(loadResourcesCommands);
 
-        m_Device.destroy(dragonTextureStagingBuffer);
-        m_Device.free(dragonTextureStagingBufferMemory);
+        m_Device.GetHandle().destroy(dragonTextureStagingBuffer);
+        m_Device.GetHandle().free(dragonTextureStagingBufferMemory);
 
-        m_Device.destroy(missingTextureStagingBuffer);
-        m_Device.free(missingTextureStagingBufferMemory);
+        m_Device.GetHandle().destroy(missingTextureStagingBuffer);
+        m_Device.GetHandle().free(missingTextureStagingBufferMemory);
 
-        m_Device.destroy(dragonIndicesStagingBuffer);
-        m_Device.free(dragonIndicesStagingBufferMemory);
+        m_Device.GetHandle().destroy(dragonIndicesStagingBuffer);
+        m_Device.GetHandle().free(dragonIndicesStagingBufferMemory);
 
-        m_Device.destroy(dragonVerticesStagingBuffer);
-        m_Device.free(dragonVerticesStagingBufferMemory);
+        m_Device.GetHandle().destroy(dragonVerticesStagingBuffer);
+        m_Device.GetHandle().free(dragonVerticesStagingBufferMemory);
 
-        m_Device.destroy(arenaIndicesStagingBuffer);
-        m_Device.free(arenaIndicesStagingBufferMemory);
+        m_Device.GetHandle().destroy(arenaIndicesStagingBuffer);
+        m_Device.GetHandle().free(arenaIndicesStagingBufferMemory);
 
-        m_Device.destroy(arenaVerticesStagingBuffer);
-        m_Device.free(arenaVerticesStagingBufferMemory);
+        m_Device.GetHandle().destroy(arenaVerticesStagingBuffer);
+        m_Device.GetHandle().free(arenaVerticesStagingBufferMemory);
 
         m_MissingTextureImageView = CreateImageView(
             m_MissingTextureImage,
@@ -1366,7 +1336,7 @@ private:
 
     void CreateTextureSampler()
     {
-        const vk::PhysicalDeviceProperties properties = m_PhysicalDevice.getProperties();
+        const vk::PhysicalDeviceProperties &properties = m_Device.GetProperties();
 
         const vk::SamplerCreateInfo createInfo = {
             .magFilter               = vk::Filter::eLinear,
@@ -1386,7 +1356,7 @@ private:
             .unnormalizedCoordinates = VK_FALSE,
         };
 
-        m_TextureSampler = m_Device.createSampler(createInfo);
+        m_TextureSampler = m_Device.GetHandle().createSampler(createInfo);
     }
 
     void CreateUniformBuffers()
@@ -1427,7 +1397,7 @@ private:
             .pPoolSizes    = poolSizes.data(),
         };
 
-        m_DescriptorPool = m_Device.createDescriptorPool(poolInfo);
+        m_DescriptorPool = m_Device.GetHandle().createDescriptorPool(poolInfo);
     }
 
     void CreateDescriptorSets()
@@ -1440,7 +1410,7 @@ private:
             .pSetLayouts        = uboLayouts.data(),
         };
 
-        m_UboDescriptorSets = m_Device.allocateDescriptorSets(uboAllocInfo);
+        m_UboDescriptorSets = m_Device.GetHandle().allocateDescriptorSets(uboAllocInfo);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -1459,7 +1429,7 @@ private:
                 .pBufferInfo     = &bufferInfo,
             };
 
-            m_Device.updateDescriptorSets({ descriptorWrite }, { });
+            m_Device.GetHandle().updateDescriptorSets({ descriptorWrite }, { });
         }
 
         const std::vector<vk::DescriptorSetLayout> textureLayouts(TextureCount, m_SamplerDescriptorSetLayout);
@@ -1470,7 +1440,7 @@ private:
             .pSetLayouts        = textureLayouts.data(),
         };
 
-        m_TextureDescriptorSets = m_Device.allocateDescriptorSets(textureAllocInfo);
+        m_TextureDescriptorSets = m_Device.GetHandle().allocateDescriptorSets(textureAllocInfo);
 
         const vk::DescriptorImageInfo missingTextureImageInfo = {
             .sampler     = m_TextureSampler,
@@ -1487,7 +1457,7 @@ private:
             .pImageInfo      = &missingTextureImageInfo,
         };
 
-        m_Device.updateDescriptorSets({ missingTextureDescriptorWrite }, { });
+        m_Device.GetHandle().updateDescriptorSets({ missingTextureDescriptorWrite }, { });
 
         const vk::DescriptorImageInfo dragonTextureImageInfo = {
             .sampler     = m_TextureSampler,
@@ -1504,7 +1474,7 @@ private:
             .pImageInfo      = &dragonTextureImageInfo,
         };
 
-        m_Device.updateDescriptorSets({ dragonTextureDescriptorWrite }, { });
+        m_Device.GetHandle().updateDescriptorSets({ dragonTextureDescriptorWrite }, { });
     }
 
     std::uint32_t FindMemoryType(std::uint32_t typeFilter, vk::MemoryPropertyFlags properties)
@@ -1517,7 +1487,7 @@ private:
             return eligibleTypes.test(index);
         };
 
-        const vk::PhysicalDeviceMemoryProperties memoryProperties = m_PhysicalDevice.getMemoryProperties();
+        const vk::PhysicalDeviceMemoryProperties &memoryProperties = m_Device.GetMemoryProperties();
         const auto arePropertiesPresent = [&properties](const vk::MemoryType &memoryType)
         {
             return (memoryType.propertyFlags & properties) == properties;
@@ -1546,7 +1516,7 @@ private:
             .commandBufferCount = count,
         };
 
-        m_CommandBuffers = m_Device.allocateCommandBuffers(allocInfo);
+        m_CommandBuffers = m_Device.GetHandle().allocateCommandBuffers(allocInfo);
     }
 
     vk::CommandBuffer BeginOneTimeCommands()
@@ -1558,7 +1528,7 @@ private:
         };
 
         vk::CommandBuffer commandBuffer;
-        (void)m_Device.allocateCommandBuffers(&allocInfo, &commandBuffer);
+        (void)m_Device.GetHandle().allocateCommandBuffers(&allocInfo, &commandBuffer);
 
         const vk::CommandBufferBeginInfo beginInfo = {
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
@@ -1578,10 +1548,10 @@ private:
             .pCommandBuffers    = &commandBuffer,
         };
 
-        m_GraphicsQueue.submit({ submitInfo }, VK_NULL_HANDLE);
-        vkQueueWaitIdle(m_GraphicsQueue);
+        m_Device.GetGraphicsQueue().submit({ submitInfo }, VK_NULL_HANDLE);
+        m_Device.GetGraphicsQueue().waitIdle();
 
-        m_Device.free(m_CommandPool, { commandBuffer });
+        m_Device.GetHandle().free(m_CommandPool, { commandBuffer });
     }
 
     void RecordCommandBuffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex)
@@ -1681,9 +1651,9 @@ private:
 
         for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
-            m_ImageAvailableSemaphores.push_back(m_Device.createSemaphore({ }));
-            m_RenderFinishedSemaphores.push_back(m_Device.createSemaphore({ }));
-            m_InFlightFences.push_back(m_Device.createFence(fenceInfo));
+            m_ImageAvailableSemaphores.push_back(m_Device.GetHandle().createSemaphore({ }));
+            m_RenderFinishedSemaphores.push_back(m_Device.GetHandle().createSemaphore({ }));
+            m_InFlightFences.push_back(m_Device.GetHandle().createFence(fenceInfo));
         }
     }
 
@@ -1694,7 +1664,7 @@ private:
             .pCode    = reinterpret_cast<const std::uint32_t *>(code.data()),
         };
 
-        return m_Device.createShaderModule(createInfo);
+        return m_Device.GetHandle().createShaderModule(createInfo);
     }
 
     void EnterMainLoop()
@@ -1720,7 +1690,7 @@ private:
             m_CurrentTick = std::chrono::steady_clock::now();
         }
 
-        m_Device.waitIdle();
+        m_Device.GetHandle().waitIdle();
     }
 
     void UpdateState(float deltaTime)
@@ -1867,7 +1837,7 @@ private:
 
     void DrawFrame()
     {
-        (void)m_Device.waitForFences(
+        (void)m_Device.GetHandle().waitForFences(
             { m_InFlightFences[m_CurrentFrameIndex] },
             VK_TRUE,
             std::numeric_limits<std::uint64_t>::max()
@@ -1875,7 +1845,7 @@ private:
 
         std::uint32_t imageIndex = 0;
         switch (
-            m_Device.acquireNextImageKHR(
+            m_Device.GetHandle().acquireNextImageKHR(
                 m_SwapChain,
                 std::numeric_limits<std::uint64_t>::max(),
                 m_ImageAvailableSemaphores[m_CurrentFrameIndex],
@@ -1896,7 +1866,7 @@ private:
 
         UpdateUniformBuffer(m_CurrentFrameIndex);
 
-        m_Device.resetFences({ m_InFlightFences[m_CurrentFrameIndex] });
+        m_Device.GetHandle().resetFences({ m_InFlightFences[m_CurrentFrameIndex] });
 
         const vk::CommandBuffer commandBuffer = m_CommandBuffers[m_CurrentFrameIndex];
         commandBuffer.reset();
@@ -1920,7 +1890,7 @@ private:
             .pSignalSemaphores    = signalSemaphores.data(),
         };
 
-        m_GraphicsQueue.submit(submitInfo, m_InFlightFences[m_CurrentFrameIndex]);
+        m_Device.GetGraphicsQueue().submit(submitInfo, m_InFlightFences[m_CurrentFrameIndex]);
 
         const std::array swapchains = { m_SwapChain };
 
@@ -1932,7 +1902,7 @@ private:
             .pImageIndices      = &imageIndex,
         };
 
-        const vk::Result presentResult = m_PresentQueue.presentKHR(&presentInfo);
+        const vk::Result presentResult = m_Device.GetPresentQueue().presentKHR(&presentInfo);
         if (presentResult == vk::Result::eSuboptimalKHR
             || presentResult == vk::Result::eErrorOutOfDateKHR
             || m_IsFramebufferResized)
@@ -2016,10 +1986,10 @@ private:
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.01F),
         };
 
-        if (void *const data = m_Device.mapMemory(m_UniformBuffersMemory[currentImage], 0, sizeof(ubo)))
+        if (void *const data = m_Device.GetHandle().mapMemory(m_UniformBuffersMemory[currentImage], 0, sizeof(ubo)))
         {
             std::memcpy(data, &ubo, sizeof(ubo));
-            m_Device.unmapMemory(m_UniformBuffersMemory[currentImage]);
+            m_Device.GetHandle().unmapMemory(m_UniformBuffersMemory[currentImage]);
         }
         else
         {
@@ -2039,7 +2009,7 @@ private:
             return;
         }
 
-        m_Device.waitIdle();
+        m_Device.GetHandle().waitIdle();
 
         CleanupSwapChain();
 
@@ -2051,75 +2021,75 @@ private:
 
     void CleanupSwapChain()
     {
-        m_Device.destroy(m_DepthImageView);
-        m_Device.destroy(m_DepthImage);
-        m_Device.free(m_DepthImageMemory);
+        m_Device.GetHandle().destroy(m_DepthImageView);
+        m_Device.GetHandle().destroy(m_DepthImage);
+        m_Device.GetHandle().free(m_DepthImageMemory);
 
         for (auto framebuffer : m_SwapChainFramebuffers)
         {
-            m_Device.destroy(framebuffer);
+            m_Device.GetHandle().destroy(framebuffer);
         }
         m_SwapChainFramebuffers.clear();
 
         for (auto imageView : m_SwapChainImageViews)
         {
-            m_Device.destroy(imageView);
+            m_Device.GetHandle().destroy(imageView);
         }
         m_SwapChainImageViews.clear();
 
-        m_Device.destroy(m_OldSwapChain);
+        m_Device.GetHandle().destroy(m_OldSwapChain);
     }
 
     void Cleanup()
     {
         CleanupSwapChain();
-        m_Device.destroy(m_SwapChain);
+        m_Device.GetHandle().destroy(m_SwapChain);
 
-        m_Device.destroy(m_TextureSampler);
+        m_Device.GetHandle().destroy(m_TextureSampler);
 
-        m_Device.destroy(m_DragonTextureImageView);
-        m_Device.destroy(m_DragonTextureImage);
-        m_Device.free(m_DragonTextureImageMemory);
+        m_Device.GetHandle().destroy(m_DragonTextureImageView);
+        m_Device.GetHandle().destroy(m_DragonTextureImage);
+        m_Device.GetHandle().free(m_DragonTextureImageMemory);
 
-        m_Device.destroy(m_MissingTextureImageView);
-        m_Device.destroy(m_MissingTextureImage);
-        m_Device.free(m_MissingTextureImageMemory);
+        m_Device.GetHandle().destroy(m_MissingTextureImageView);
+        m_Device.GetHandle().destroy(m_MissingTextureImage);
+        m_Device.GetHandle().free(m_MissingTextureImageMemory);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
-            m_Device.destroy(m_UniformBuffers[i]);
-            m_Device.free(m_UniformBuffersMemory[i]);
+            m_Device.GetHandle().destroy(m_UniformBuffers[i]);
+            m_Device.GetHandle().free(m_UniformBuffersMemory[i]);
         }
 
-        m_Device.destroy(m_DescriptorPool);
-        m_Device.destroy(m_SamplerDescriptorSetLayout);
-        m_Device.destroy(m_UboDescriptorSetLayout);
+        m_Device.GetHandle().destroy(m_DescriptorPool);
+        m_Device.GetHandle().destroy(m_SamplerDescriptorSetLayout);
+        m_Device.GetHandle().destroy(m_UboDescriptorSetLayout);
 
-        m_Device.destroy(m_RenderPass);
+        m_Device.GetHandle().destroy(m_RenderPass);
 
-        m_Device.destroy(m_DragonVertexBuffer);
-        m_Device.free(m_DragonVertexBufferMemory);
-        m_Device.destroy(m_DragonIndexBuffer);
-        m_Device.free(m_DragonIndexBufferMemory);
+        m_Device.GetHandle().destroy(m_DragonVertexBuffer);
+        m_Device.GetHandle().free(m_DragonVertexBufferMemory);
+        m_Device.GetHandle().destroy(m_DragonIndexBuffer);
+        m_Device.GetHandle().free(m_DragonIndexBufferMemory);
 
-        m_Device.destroy(m_ArenaVertexBuffer);
-        m_Device.free(m_ArenaVertexBufferMemory);
-        m_Device.destroy(m_ArenaIndexBuffer);
-        m_Device.free(m_ArenaIndexBufferMemory);
+        m_Device.GetHandle().destroy(m_ArenaVertexBuffer);
+        m_Device.GetHandle().free(m_ArenaVertexBufferMemory);
+        m_Device.GetHandle().destroy(m_ArenaIndexBuffer);
+        m_Device.GetHandle().free(m_ArenaIndexBufferMemory);
 
         for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
-            m_Device.destroy(m_ImageAvailableSemaphores[i]);
-            m_Device.destroy(m_RenderFinishedSemaphores[i]);
-            m_Device.destroy(m_InFlightFences[i]);
+            m_Device.GetHandle().destroy(m_ImageAvailableSemaphores[i]);
+            m_Device.GetHandle().destroy(m_RenderFinishedSemaphores[i]);
+            m_Device.GetHandle().destroy(m_InFlightFences[i]);
         }
 
-        m_Device.destroy(m_CommandPool);
+        m_Device.GetHandle().destroy(m_CommandPool);
 
-        m_Device.destroy(m_GraphicsPipeline);
-        m_Device.destroy(m_PipelineLayout);
+        m_Device.GetHandle().destroy(m_GraphicsPipeline);
+        m_Device.GetHandle().destroy(m_PipelineLayout);
 
-        m_Device.destroy();
+        m_Device.Destroy();
 
         m_Instance.destroy(m_Surface);
 
@@ -2250,10 +2220,8 @@ private:
     vk::Instance m_Instance;
     vk::DebugUtilsMessengerEXT m_DebugMessenger;
     vk::SurfaceKHR m_Surface;
-    vk::PhysicalDevice m_PhysicalDevice;
-    vk::Device m_Device;
-    vk::Queue m_GraphicsQueue;
-    vk::Queue m_PresentQueue;
+
+    Device m_Device;
 
     vk::Format m_SwapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D m_SwapChainExtent;

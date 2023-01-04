@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fstream>
 #include <optional>
+#include <set>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -21,52 +22,6 @@
 #else
 #error "Unsupported compiler. This project currently only supports MSVC, GCC, and Clang."
 #endif
-
-struct Vertex
-{
-    glm::vec3 Position;
-    glm::vec2 TexCoord;
-
-    static constexpr vk::VertexInputBindingDescription GetBindingDescription()
-    {
-        return {
-            .binding   = 0,
-            .stride    = sizeof(Vertex),
-            .inputRate = vk::VertexInputRate::eVertex,
-        };
-    }
-
-    static constexpr auto GetAttributeDescriptions()
-    {
-        return std::to_array<vk::VertexInputAttributeDescription>({
-            {
-                .location = 0,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(Vertex, Position),
-            },
-            {
-                .location = 1,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32Sfloat,
-                .offset   = offsetof(Vertex, TexCoord),
-            },
-        });
-    }
-};
-
-struct QueueFamilyIndices
-{
-    std::optional<std::uint32_t> Graphics;
-    std::optional<std::uint32_t> Present;
-
-    [[nodiscard]]
-    bool IsComplete() const
-    {
-        return Graphics.has_value()
-               && Present.has_value();
-    }
-};
 
 struct SwapChainSupportDetails
 {
@@ -84,7 +39,6 @@ struct UniformBufferObject
 
 namespace vkm
 {
-
     template<typename T>
     glm::mat<4, 4, T, glm::defaultp> perspective(T verticalFov, T aspect, T near)
     {

@@ -163,6 +163,7 @@ endif()
 
 add_executable(Renderer
     Source/Main.cpp
+    Source/Device.cpp
     Source/TinyObjLoader.cpp
 )
 
