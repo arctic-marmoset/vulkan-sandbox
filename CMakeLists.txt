@@ -163,6 +163,7 @@ endif()
 
 add_executable(Renderer
     Source/Main.cpp
+    Source/Camera.cpp
     Source/Device.cpp
     Source/Model.cpp
     Source/Tga.cpp

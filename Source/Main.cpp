@@ -1,3 +1,4 @@
+#include "Camera.hpp"
 #include "Device.hpp"
 #include "Model.hpp"
 #include "Tga.hpp"
@@ -5,10 +6,9 @@
 
 #include <fmt/format.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <spdlog/spdlog.h>
 #include <vulkan/vulkan.hpp>
-
-#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
@@ -1238,6 +1238,7 @@ private:
             m_FrameTimeSum += deltaTime;
             m_SmoothedFrameTime = m_FrameTimeSum / (float)m_FrameTimeSamples.size();
 
+            HandleInput();
             UpdateState(deltaTime);
             DrawFrame();
             glfwPollEvents();
@@ -1249,111 +1250,47 @@ private:
         m_Device.GetHandle().waitIdle();
     }
 
+    void HandleInput()
+    {
+        if (glfwGetKey(m_Window, GLFW_KEY_R) == GLFW_PRESS)
+        {
+            m_Camera.ResetAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_W) == GLFW_PRESS)
+        {
+            m_Camera.MoveForwardAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_S) == GLFW_PRESS)
+        {
+            m_Camera.MoveBackwardAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_A) == GLFW_PRESS)
+        {
+            m_Camera.StrafeLeftAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_D) == GLFW_PRESS)
+        {
+            m_Camera.StrafeRightAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        {
+            m_Camera.SetShiftSpeedAsync();
+        }
+        if (glfwGetKey(m_Window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS)
+        {
+            m_Camera.SetAltSpeedAsync();
+        }
+    }
+
     void UpdateState(float deltaTime)
     {
         const auto deltaX = static_cast<float>(m_MousePos.XPos - m_LastMousePos.XPos);
         const auto deltaY = static_cast<float>(m_MousePos.YPos - m_LastMousePos.YPos);
 
-        UpdateCamera(deltaTime, deltaX, deltaY);
+        m_Camera.Update(deltaTime, deltaX, deltaY);
         UpdateTitle();
 
         m_LastMousePos = m_MousePos;
-    }
-
-    void UpdateCamera(float deltaTime, float deltaX, float deltaY)
-    {
-        if (glfwGetKey(m_Window, GLFW_KEY_R) == GLFW_PRESS)
-        {
-            m_Camera = Camera();
-            return;
-        }
-
-        constexpr float lookSensitivity = 0.005F;
-
-        constexpr float pitchLimit = glm::half_pi<float>() - 0.01F;
-        const float deltaYaw = lookSensitivity * -deltaX;
-        const float deltaPitch = lookSensitivity * deltaY;
-
-        m_Camera.Yaw = glm::mod(m_Camera.Yaw + deltaYaw, glm::two_pi<float>());
-        m_Camera.Pitch = glm::clamp(m_Camera.Pitch + deltaPitch, -pitchLimit, pitchLimit);
-
-        const glm::vec3 lookDirection = {
-            glm::cos(m_Camera.Yaw) * glm::cos(m_Camera.Pitch),
-            glm::sin(m_Camera.Pitch),
-            glm::sin(m_Camera.Yaw) * glm::cos(m_Camera.Pitch),
-        };
-
-        m_Camera.Forward = glm::normalize(lookDirection);
-        m_Camera.Right = glm::normalize(glm::cross(m_Camera.Forward, glm::vec3(0.0F, -1.0F, 0.0F)));
-        m_Camera.Up = glm::normalize(glm::cross(m_Camera.Right, m_Camera.Forward));
-
-        struct
-        {
-            bool Forward = false;
-            bool Backward = false;
-            bool Left = false;
-            bool Right = false;
-
-            void Normalize()
-            {
-                if (Forward && Backward)
-                {
-                    Forward = false;
-                    Backward = false;
-                }
-
-                if (Left && Right)
-                {
-                    Left = false;
-                    Right = false;
-                }
-            }
-
-            [[nodiscard]]
-            bool Any() const
-            {
-                return Forward || Backward || Left || Right;
-            }
-        } movement;
-
-        glm::vec3 moveDirection = { };
-        if (glfwGetKey(m_Window, GLFW_KEY_W) == GLFW_PRESS)
-        {
-            movement.Forward = true;
-            moveDirection += m_Camera.Forward;
-        }
-        if (glfwGetKey(m_Window, GLFW_KEY_A) == GLFW_PRESS)
-        {
-            movement.Left = true;
-            moveDirection -= m_Camera.Right;
-        }
-        if (glfwGetKey(m_Window, GLFW_KEY_S) == GLFW_PRESS)
-        {
-            movement.Backward = true;
-            moveDirection -= m_Camera.Forward;
-        }
-        if (glfwGetKey(m_Window, GLFW_KEY_D) == GLFW_PRESS)
-        {
-            movement.Right = true;
-            moveDirection += m_Camera.Right;
-        }
-
-        movement.Normalize();
-
-        if (movement.Any())
-        {
-            constexpr float moveSpeed = 5.0F;
-            constexpr float shiftMoveSpeed = 10.0F;
-            constexpr float altMoveSpeed = 2.0F;
-
-            const float moveAmount = glfwGetKey(m_Window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
-                ? deltaTime * shiftMoveSpeed
-                : glfwGetKey(m_Window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
-                    ? deltaTime * altMoveSpeed
-                    : deltaTime * moveSpeed;
-
-            m_Camera.Position += moveAmount * glm::normalize(moveDirection);
-        }
     }
 
     void UpdateTitle()
@@ -1364,12 +1301,12 @@ private:
             "{} | Frame Time: {:>7.3f} ms | Position: ({:.2f}, {:.2f}, {:.2f}) | Heading: ({:.2f}, {:.2f}, {:.2f})",
             DefaultTitle,
             m_SmoothedFrameTime * 1000.0F,
-            m_Camera.Position.x,
-            m_Camera.Position.y,
-            m_Camera.Position.z,
-            m_Camera.Forward.x,
-            m_Camera.Forward.y,
-            m_Camera.Forward.z
+            m_Camera.GetPosition().x,
+            m_Camera.GetPosition().y,
+            m_Camera.GetPosition().z,
+            m_Camera.GetLookDirection().x,
+            m_Camera.GetLookDirection().y,
+            m_Camera.GetLookDirection().z
         );
 
         if (std::size_t size = m_Title.size(); size < result.size)
@@ -1384,12 +1321,6 @@ private:
         }
 
         glfwSetWindowTitle(m_Window, m_Title.data());
-    }
-
-    [[nodiscard]]
-    glm::mat4 GetViewMatrix() const
-    {
-        return glm::lookAt(m_Camera.Position, m_Camera.Position + m_Camera.Forward, m_Camera.Up);
     }
 
     void DrawFrame()
@@ -1481,7 +1412,7 @@ private:
 
         const UniformBufferObject ubo = {
             .Model = glm::mat4(1.0F),
-            .View  = GetViewMatrix(),
+            .View  = m_Camera.GetViewMatrix(),
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.01F),
         };
 
@@ -1764,18 +1695,6 @@ private:
 
     Mouse m_LastMousePos = { };
     Mouse m_MousePos = { };
-
-    struct Camera
-    {
-        glm::vec3 Forward = { 0.0F, 0.0F, 1.0F };
-        glm::vec3 Right = { 1.0F, 0.0F, 0.0F };
-        glm::vec3 Up = { 0.0F, -1.0F, 0.0F };
-
-        glm::vec3 Position = { 0.0F, 0.0F, -1.0F };
-
-        float Yaw   = glm::half_pi<float>();
-        float Pitch = 0.0F;
-    };
 
     Camera m_Camera;
 
