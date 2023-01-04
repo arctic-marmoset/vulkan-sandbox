@@ -149,6 +149,7 @@ add_custom_target(RendererShaders
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(tinyobjloader CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 
 # Workaround for older versions of GLM
@@ -162,6 +163,7 @@ endif()
 
 add_executable(Renderer
     Source/Main.cpp
+    Source/TinyObjLoader.cpp
 )
 
 target_precompile_headers(Renderer
@@ -194,6 +196,7 @@ target_link_libraries(Renderer
         glfw
         glm::glm
         spdlog::spdlog_header_only
+        tinyobjloader::tinyobjloader
         Vulkan::Vulkan
 )
 

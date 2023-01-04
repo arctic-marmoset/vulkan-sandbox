@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <tiny_obj_loader.h>
 #include <vulkan/vulkan.hpp>
 
 #include <algorithm>
@@ -18,6 +19,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -231,11 +233,8 @@ private:
         CreateCommandPool();
         CreateDepthResources();
         CreateFramebuffers();
-        CreateTextureImage();
-        CreateTextureImageView();
+        CreateResources();
         CreateTextureSampler();
-        CreateVertexBuffer();
-        CreateIndexBuffer();
         CreateUniformBuffers();
         CreateDescriptorPool();
         CreateDescriptorSets();
@@ -652,38 +651,33 @@ private:
 
     void CreateDescriptorSetLayout()
     {
-        enum : std::uint32_t
-        {
-            UboLayoutBindingIndex,
-            SamplerLayoutBindingIndex,
-
-            LayoutBindingCount,
-        };
-
-        std::array<vk::DescriptorSetLayoutBinding, LayoutBindingCount> layoutBindings;
-        vk::DescriptorSetLayoutBinding &uboLayoutBinding = layoutBindings[UboLayoutBindingIndex];
-        vk::DescriptorSetLayoutBinding &samplerLayoutBinding = layoutBindings[SamplerLayoutBindingIndex];
-
-        uboLayoutBinding = {
-            .binding         = UboLayoutBindingIndex,
+        const vk::DescriptorSetLayoutBinding uboLayoutBinding = {
+            .binding         = 0, // layout(set = 0, binding = 0) uniform UniformBufferObject.
             .descriptorType  = vk::DescriptorType::eUniformBuffer,
             .descriptorCount = 1,
             .stageFlags      = vk::ShaderStageFlagBits::eVertex,
         };
 
-        samplerLayoutBinding = {
-            .binding         = SamplerLayoutBindingIndex,
+        const vk::DescriptorSetLayoutCreateInfo uboLayoutInfo = {
+            .bindingCount = 1,
+            .pBindings    = &uboLayoutBinding,
+        };
+
+        m_UboDescriptorSetLayout = m_Device.createDescriptorSetLayout(uboLayoutInfo);
+
+        const vk::DescriptorSetLayoutBinding samplerLayoutBinding = {
+            .binding         = 0, // layout(set = 1, binding = 0) uniform sampler2D texSampler.
             .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
             .descriptorCount = 1,
             .stageFlags      = vk::ShaderStageFlagBits::eFragment,
         };
 
-        const vk::DescriptorSetLayoutCreateInfo layoutInfo = {
-            .bindingCount = static_cast<std::uint32_t>(layoutBindings.size()),
-            .pBindings    = layoutBindings.data(),
+        const vk::DescriptorSetLayoutCreateInfo samplerLayoutInfo = {
+            .bindingCount = 1,
+            .pBindings    = &samplerLayoutBinding,
         };
 
-        m_DescriptorSetLayout = m_Device.createDescriptorSetLayout(layoutInfo);
+        m_SamplerDescriptorSetLayout = m_Device.createDescriptorSetLayout(samplerLayoutInfo);
     }
 
     void CreateGraphicsPipeline()
@@ -764,9 +758,11 @@ private:
             .pAttachments    = &colorBlendAttachmentState,
         };
 
+        const std::array descriptorSetLayouts = { m_UboDescriptorSetLayout, m_SamplerDescriptorSetLayout };
+
         const vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
-            .setLayoutCount = 1,
-            .pSetLayouts    = &m_DescriptorSetLayout,
+            .setLayoutCount = static_cast<std::uint32_t>(descriptorSetLayouts.size()),
+            .pSetLayouts    = descriptorSetLayouts.data(),
         };
 
         m_PipelineLayout = m_Device.createPipelineLayout(pipelineLayoutCreateInfo);
@@ -871,10 +867,8 @@ private:
         m_Device.bindBufferMemory(buffer, bufferMemory, 0);
     }
 
-    void CopyBuffer(vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
+    void CopyBuffer(vk::CommandBuffer commandBuffer, vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
     {
-        const vk::CommandBuffer commandBuffer = BeginOneTimeCommands();
-
         const vk::BufferCopy copyRegion = {
             .srcOffset = 0,
             .dstOffset = 0,
@@ -882,14 +876,16 @@ private:
         };
 
         commandBuffer.copyBuffer(source, destination, copyRegion);
-
-        EndOneTimeCommands(commandBuffer);
     }
 
-    void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+    void CopyBufferToImage(
+        vk::CommandBuffer commandBuffer,
+        VkBuffer buffer,
+        VkImage image,
+        uint32_t width,
+        uint32_t height
+    )
     {
-        const vk::CommandBuffer commandBuffer = BeginOneTimeCommands();
-
         const vk::BufferImageCopy region = {
             .bufferOffset       = 0,
             .bufferRowLength    = 0,
@@ -913,8 +909,6 @@ private:
         };
 
         commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, { region });
-
-        EndOneTimeCommands(commandBuffer);
     }
 
     void CreateImage(
@@ -1027,25 +1021,219 @@ private:
         m_DepthImageView = CreateImageView(m_DepthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
     }
 
-    void CreateTextureImage()
+    void CreateResources()
     {
-        const std::vector<std::uint8_t> fileBytes = ReadFile(GetResourcePath("Textures/Missing_Raw.tga").c_str());
-        const Tga::File texture = Tga::File::CreateFrom(fileBytes);
-        const vk::DeviceSize textureSize = texture.GetSize();
+        const vk::CommandBuffer loadResourcesCommands = BeginOneTimeCommands();
 
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
+        // Transfer arena vertices to GPU memory.
+
+        constexpr vk::DeviceSize arenaVerticesSize =
+            sizeof(decltype(ArenaVertices)::value_type) * ArenaVertices.size();
+
+        vk::Buffer arenaVerticesStagingBuffer;
+        vk::DeviceMemory arenaVerticesStagingBufferMemory;
         CreateBuffer(
-            textureSize,
+            arenaVerticesSize,
             vk::BufferUsageFlagBits::eTransferSrc,
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            stagingBuffer,
-            stagingBufferMemory
+            arenaVerticesStagingBuffer,
+            arenaVerticesStagingBufferMemory
         );
 
-        if (void *const data = m_Device.mapMemory(stagingBufferMemory, 0, textureSize))
+        if (void *data = m_Device.mapMemory(arenaVerticesStagingBufferMemory, 0, arenaVerticesSize))
         {
-            std::memcpy(data, texture.Pixels.data(), texture.Pixels.size());
+            std::memcpy(data, ArenaVertices.data(), arenaVerticesSize);
+            m_Device.unmapMemory(arenaVerticesStagingBufferMemory);
+        }
+        else
+        {
+            throw std::runtime_error("Failed to map staging buffer memory for vertices");
+        }
+
+        CreateBuffer(
+            arenaVerticesSize,
+            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            m_ArenaVertexBuffer,
+            m_ArenaVertexBufferMemory
+        );
+
+        CopyBuffer(loadResourcesCommands, arenaVerticesStagingBuffer, m_ArenaVertexBuffer, arenaVerticesSize);
+
+        // Transfer arena indices to GPU memory.
+
+        constexpr vk::DeviceSize arenaIndicesSize =
+            sizeof(decltype(ArenaIndices)::value_type) * ArenaIndices.size();
+
+        vk::Buffer arenaIndicesStagingBuffer;
+        vk::DeviceMemory arenaIndicesStagingBufferMemory;
+        CreateBuffer(
+            arenaIndicesSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            arenaIndicesStagingBuffer,
+            arenaIndicesStagingBufferMemory
+        );
+
+        if (void *data = m_Device.mapMemory(arenaIndicesStagingBufferMemory, 0, arenaIndicesSize))
+        {
+            std::memcpy(data, ArenaIndices.data(), arenaIndicesSize);
+            m_Device.unmapMemory(arenaIndicesStagingBufferMemory);
+        }
+        else
+        {
+            throw std::runtime_error("Failed to map staging buffer memory for indices");
+        }
+
+        CreateBuffer(
+            arenaIndicesSize,
+            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            m_ArenaIndexBuffer,
+            m_ArenaIndexBufferMemory
+        );
+
+        CopyBuffer(loadResourcesCommands, arenaIndicesStagingBuffer, m_ArenaIndexBuffer, arenaIndicesSize);
+
+        // Load dragon mesh.
+
+        tinyobj::ObjReader reader;
+        if (!reader.ParseFromFile(GetResourcePath("Meshes/StanfordDragon.obj")))
+        {
+            throw std::runtime_error("Failed to load Stanford dragon mesh");
+        }
+
+        if (!reader.Warning().empty())
+        {
+            std::cout << "TinyObjReader Warning: " << reader.Warning();
+        }
+
+        const tinyobj::attrib_t &attrib = reader.GetAttrib();
+        const tinyobj::shape_t &shape = reader.GetShapes()[0];
+
+        std::size_t indexOffset = 0;
+        for (std::size_t faceIndex = 0; faceIndex < shape.mesh.num_face_vertices.size(); ++faceIndex)
+        {
+            const std::size_t faceVertexCount = shape.mesh.num_face_vertices[faceIndex];
+
+            for (std::size_t vertexIndex = 0; vertexIndex < faceVertexCount; ++vertexIndex)
+            {
+                constexpr std::size_t vertexDimensionCount = 3;
+                const tinyobj::index_t index = shape.mesh.indices[vertexIndex + indexOffset];
+                const tinyobj::real_t xPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 0];
+                const tinyobj::real_t yPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 1];
+                const tinyobj::real_t zPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 2];
+
+                assert("Meshes should contain texture coordinate info" && index.texcoord_index >= 0);
+                constexpr std::size_t textureDimensionCount = 2;
+                const tinyobj::real_t u = attrib.texcoords[textureDimensionCount * index.texcoord_index + 0];
+                const tinyobj::real_t v = attrib.texcoords[textureDimensionCount * index.texcoord_index + 1];
+
+                const Vertex vertex = {
+                    .Position = { xPos, yPos, zPos },
+                    .TexCoord = { u, v },
+                };
+
+                m_DragonVertices.push_back(vertex);
+            }
+
+            indexOffset += faceVertexCount;
+        }
+
+        m_DragonIndices.resize(m_DragonVertices.size());
+        std::iota(m_DragonIndices.begin(), m_DragonIndices.end(), 0);
+
+        // Copy dragon vertices to GPU memory.
+
+        const vk::DeviceSize dragonVerticesSize =
+            sizeof(decltype(m_DragonVertices)::value_type) * m_DragonVertices.size();
+
+        vk::Buffer dragonVerticesStagingBuffer;
+        vk::DeviceMemory dragonVerticesStagingBufferMemory;
+        CreateBuffer(
+            dragonVerticesSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            dragonVerticesStagingBuffer,
+            dragonVerticesStagingBufferMemory
+        );
+
+        if (void *data = m_Device.mapMemory(dragonVerticesStagingBufferMemory, 0, dragonVerticesSize))
+        {
+            std::memcpy(data, m_DragonVertices.data(), dragonVerticesSize);
+            m_Device.unmapMemory(dragonVerticesStagingBufferMemory);
+        }
+        else
+        {
+            throw std::runtime_error("Failed to map staging buffer memory for vertices");
+        }
+
+        CreateBuffer(
+            dragonVerticesSize,
+            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            m_DragonVertexBuffer,
+            m_DragonVertexBufferMemory
+        );
+
+        CopyBuffer(loadResourcesCommands, dragonVerticesStagingBuffer, m_DragonVertexBuffer, dragonVerticesSize);
+
+        // Copy dragon indices to GPU memory.
+
+        const vk::DeviceSize dragonIndicesSize =
+            sizeof(decltype(m_DragonIndices)::value_type) * m_DragonIndices.size();
+
+        vk::Buffer dragonIndicesStagingBuffer;
+        vk::DeviceMemory dragonIndicesStagingBufferMemory;
+        CreateBuffer(
+            dragonIndicesSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            dragonIndicesStagingBuffer,
+            dragonIndicesStagingBufferMemory
+        );
+
+        if (void *data = m_Device.mapMemory(dragonIndicesStagingBufferMemory, 0, dragonIndicesSize))
+        {
+            std::memcpy(data, m_DragonIndices.data(), dragonIndicesSize);
+            m_Device.unmapMemory(dragonIndicesStagingBufferMemory);
+        }
+        else
+        {
+            throw std::runtime_error("Failed to map staging buffer memory for vertices");
+        }
+
+        CreateBuffer(
+            dragonIndicesSize,
+            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            m_DragonIndexBuffer,
+            m_DragonIndexBufferMemory
+        );
+
+        CopyBuffer(loadResourcesCommands, dragonIndicesStagingBuffer, m_DragonIndexBuffer, dragonIndicesSize);
+
+        // Copy textures to GPU memory.
+
+        const std::vector<std::uint8_t> missingTextureFileBytes =
+            ReadFile(GetResourcePath("Textures/Missing_Raw.tga").c_str());
+
+        const Tga::File missingTexture = Tga::File::CreateFrom(missingTextureFileBytes);
+
+        vk::Buffer missingTextureStagingBuffer;
+        vk::DeviceMemory missingTextureStagingBufferMemory;
+        CreateBuffer(
+            missingTexture.GetSize(),
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            missingTextureStagingBuffer,
+            missingTextureStagingBufferMemory
+        );
+
+        if (void *const data = m_Device.mapMemory(missingTextureStagingBufferMemory, 0, missingTexture.GetSize()))
+        {
+            std::memcpy(data, missingTexture.Pixels.data(), missingTexture.Pixels.size());
+            m_Device.unmapMemory(missingTextureStagingBufferMemory);
         }
         else
         {
@@ -1053,8 +1241,8 @@ private:
         }
 
         CreateImage(
-            texture.Width,
-            texture.Height,
+            missingTexture.Width,
+            missingTexture.Height,
             vk::Format::eB8G8R8A8Srgb,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
@@ -1064,27 +1252,113 @@ private:
         );
 
         TransitionImageLayout(
+            loadResourcesCommands,
             m_MissingTextureImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eTransferDstOptimal
         );
 
-        CopyBufferToImage(stagingBuffer, m_MissingTextureImage, texture.Width, texture.Height);
+        CopyBufferToImage(
+            loadResourcesCommands,
+            missingTextureStagingBuffer,
+            m_MissingTextureImage,
+            missingTexture.Width,
+            missingTexture.Height
+        );
 
         TransitionImageLayout(
+            loadResourcesCommands,
             m_MissingTextureImage,
             vk::ImageLayout::eTransferDstOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal
         );
 
-        m_Device.destroy(stagingBuffer);
-        m_Device.free(stagingBufferMemory);
-    }
+        const std::vector<std::uint8_t> dragonTextureFileBytes =
+            ReadFile(GetResourcePath("Textures/StanfordDragon_Albedo_Raw.tga").c_str());
 
-    void CreateTextureImageView()
-    {
+        const Tga::File dragonTexture = Tga::File::CreateFrom(dragonTextureFileBytes);
+
+        vk::Buffer dragonTextureStagingBuffer;
+        vk::DeviceMemory dragonTextureStagingBufferMemory;
+        CreateBuffer(
+            dragonTexture.GetSize(),
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            dragonTextureStagingBuffer,
+            dragonTextureStagingBufferMemory
+        );
+
+        if (void *const data = m_Device.mapMemory(dragonTextureStagingBufferMemory, 0, dragonTexture.GetSize()))
+        {
+            std::memcpy(data, dragonTexture.Pixels.data(), dragonTexture.Pixels.size());
+            m_Device.unmapMemory(dragonTextureStagingBufferMemory);
+        }
+        else
+        {
+            throw std::runtime_error("Failed to map texture memory");
+        }
+
+        CreateImage(
+            dragonTexture.Width,
+            dragonTexture.Height,
+            vk::Format::eB8G8R8A8Srgb,
+            vk::ImageTiling::eOptimal,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            m_DragonTextureImage,
+            m_DragonTextureImageMemory
+        );
+
+        TransitionImageLayout(
+            loadResourcesCommands,
+            m_DragonTextureImage,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal
+        );
+
+        CopyBufferToImage(
+            loadResourcesCommands,
+            dragonTextureStagingBuffer,
+            m_DragonTextureImage,
+            dragonTexture.Width,
+            dragonTexture.Height
+        );
+
+        TransitionImageLayout(
+            loadResourcesCommands,
+            m_DragonTextureImage,
+            vk::ImageLayout::eTransferDstOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal
+        );
+
+        EndOneTimeCommands(loadResourcesCommands);
+
+        m_Device.destroy(dragonTextureStagingBuffer);
+        m_Device.free(dragonTextureStagingBufferMemory);
+
+        m_Device.destroy(missingTextureStagingBuffer);
+        m_Device.free(missingTextureStagingBufferMemory);
+
+        m_Device.destroy(dragonIndicesStagingBuffer);
+        m_Device.free(dragonIndicesStagingBufferMemory);
+
+        m_Device.destroy(dragonVerticesStagingBuffer);
+        m_Device.free(dragonVerticesStagingBufferMemory);
+
+        m_Device.destroy(arenaIndicesStagingBuffer);
+        m_Device.free(arenaIndicesStagingBufferMemory);
+
+        m_Device.destroy(arenaVerticesStagingBuffer);
+        m_Device.free(arenaVerticesStagingBufferMemory);
+
         m_MissingTextureImageView = CreateImageView(
             m_MissingTextureImage,
+            vk::Format::eB8G8R8A8Srgb,
+            vk::ImageAspectFlagBits::eColor
+        );
+
+        m_DragonTextureImageView = CreateImageView(
+            m_DragonTextureImage,
             vk::Format::eB8G8R8A8Srgb,
             vk::ImageAspectFlagBits::eColor
         );
@@ -1115,82 +1389,6 @@ private:
         m_TextureSampler = m_Device.createSampler(createInfo);
     }
 
-    void CreateVertexBuffer()
-    {
-        constexpr vk::DeviceSize triangleVerticesSize =
-            sizeof(decltype(ArenaVertices)::value_type) * ArenaVertices.size();
-
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        CreateBuffer(
-            triangleVerticesSize,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            stagingBuffer,
-            stagingBufferMemory
-        );
-
-        if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleVerticesSize))
-        {
-            std::memcpy(data, ArenaVertices.data(), triangleVerticesSize);
-            m_Device.unmapMemory(stagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map staging buffer memory for vertices");
-        }
-
-        CreateBuffer(
-            triangleVerticesSize,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_VertexBuffer,
-            m_VertexBufferMemory
-        );
-
-        CopyBuffer(stagingBuffer, m_VertexBuffer, triangleVerticesSize);
-        m_Device.destroy(stagingBuffer);
-        m_Device.free(stagingBufferMemory);
-    }
-
-    void CreateIndexBuffer()
-    {
-        constexpr vk::DeviceSize triangleIndicesSize =
-            sizeof(decltype(ArenaIndices)::value_type) * ArenaIndices.size();
-
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        CreateBuffer(
-            triangleIndicesSize,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            stagingBuffer,
-            stagingBufferMemory
-        );
-
-        if (void *data = m_Device.mapMemory(stagingBufferMemory, 0, triangleIndicesSize))
-        {
-            std::memcpy(data, ArenaIndices.data(), triangleIndicesSize);
-            m_Device.unmapMemory(stagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map staging buffer memory for indices");
-        }
-
-        CreateBuffer(
-            triangleIndicesSize,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_IndexBuffer,
-            m_IndexBufferMemory
-        );
-
-        CopyBuffer(stagingBuffer, m_IndexBuffer, triangleIndicesSize);
-        m_Device.destroy(stagingBuffer);
-        m_Device.free(stagingBufferMemory);
-    }
-
     void CreateUniformBuffers()
     {
         constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -1219,12 +1417,12 @@ private:
             },
             {
                 .type            = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = MaxFramesInFlight,
+                .descriptorCount = TextureCount,
             },
         });
 
         const vk::DescriptorPoolCreateInfo poolInfo = {
-            .maxSets       = MaxFramesInFlight,
+            .maxSets       = MaxFramesInFlight + TextureCount, // One UBO per frame, and one set per texture.
             .poolSizeCount = static_cast<std::uint32_t>(poolSizes.size()),
             .pPoolSizes    = poolSizes.data(),
         };
@@ -1234,15 +1432,15 @@ private:
 
     void CreateDescriptorSets()
     {
-        const std::vector<vk::DescriptorSetLayout> layouts(MaxFramesInFlight, m_DescriptorSetLayout);
+        const std::vector<vk::DescriptorSetLayout> uboLayouts(MaxFramesInFlight, m_UboDescriptorSetLayout);
 
-        const vk::DescriptorSetAllocateInfo allocInfo = {
+        const vk::DescriptorSetAllocateInfo uboAllocInfo = {
             .descriptorPool     = m_DescriptorPool,
             .descriptorSetCount = MaxFramesInFlight,
-            .pSetLayouts        = layouts.data(),
+            .pSetLayouts        = uboLayouts.data(),
         };
 
-        m_DescriptorSets = m_Device.allocateDescriptorSets(allocInfo);
+        m_UboDescriptorSets = m_Device.allocateDescriptorSets(uboAllocInfo);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -1252,33 +1450,61 @@ private:
                 .range  = sizeof(::UniformBufferObject),
             };
 
-            const vk::DescriptorImageInfo imageInfo = {
-                .sampler     = m_TextureSampler,
-                .imageView   = m_MissingTextureImageView,
-                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            const vk::WriteDescriptorSet descriptorWrite = {
+                .dstSet          = m_UboDescriptorSets[i],
+                .dstBinding      = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = vk::DescriptorType::eUniformBuffer,
+                .pBufferInfo     = &bufferInfo,
             };
 
-            const auto descriptorWrites = std::to_array<vk::WriteDescriptorSet>({
-                {
-                    .dstSet          = m_DescriptorSets[i],
-                    .dstBinding      = 0,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType  = vk::DescriptorType::eUniformBuffer,
-                    .pBufferInfo     = &bufferInfo,
-                },
-                {
-                    .dstSet          = m_DescriptorSets[i],
-                    .dstBinding      = 1,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
-                    .pImageInfo      = &imageInfo,
-                },
-            });
-
-            m_Device.updateDescriptorSets(descriptorWrites, { });
+            m_Device.updateDescriptorSets({ descriptorWrite }, { });
         }
+
+        const std::vector<vk::DescriptorSetLayout> textureLayouts(TextureCount, m_SamplerDescriptorSetLayout);
+
+        const vk::DescriptorSetAllocateInfo textureAllocInfo = {
+            .descriptorPool     = m_DescriptorPool,
+            .descriptorSetCount = TextureCount,
+            .pSetLayouts        = textureLayouts.data(),
+        };
+
+        m_TextureDescriptorSets = m_Device.allocateDescriptorSets(textureAllocInfo);
+
+        const vk::DescriptorImageInfo missingTextureImageInfo = {
+            .sampler     = m_TextureSampler,
+            .imageView   = m_MissingTextureImageView,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        };
+
+        const vk::WriteDescriptorSet missingTextureDescriptorWrite = {
+            .dstSet          = m_TextureDescriptorSets[MissingTexture],
+            .dstBinding      = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo      = &missingTextureImageInfo,
+        };
+
+        m_Device.updateDescriptorSets({ missingTextureDescriptorWrite }, { });
+
+        const vk::DescriptorImageInfo dragonTextureImageInfo = {
+            .sampler     = m_TextureSampler,
+            .imageView   = m_DragonTextureImageView,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        };
+
+        const vk::WriteDescriptorSet dragonTextureDescriptorWrite = {
+            .dstSet          = m_TextureDescriptorSets[DragonTexture],
+            .dstBinding      = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo      = &dragonTextureImageInfo,
+        };
+
+        m_Device.updateDescriptorSets({ dragonTextureDescriptorWrite }, { });
     }
 
     std::uint32_t FindMemoryType(std::uint32_t typeFilter, vk::MemoryPropertyFlags properties)
@@ -1402,29 +1628,41 @@ private:
             .extent = m_SwapChainExtent,
         };
 
-        const std::array vertexBuffers = {
-            m_VertexBuffer,
-        };
-
-        const std::array<vk::DeviceSize, 1> offsets = {
-            0,
-        };
-
         commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
         {
             commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline);
             commandBuffer.setViewport(0, 1, &viewport);
             commandBuffer.setScissor(0, 1, &scissor);
-            commandBuffer.bindVertexBuffers(0, vertexBuffers, offsets);
-            commandBuffer.bindIndexBuffer(m_IndexBuffer, 0, vk::IndexType::eUint16);
+
             commandBuffer.bindDescriptorSets(
                 vk::PipelineBindPoint::eGraphics,
                 m_PipelineLayout,
                 0,
-                { m_DescriptorSets[m_CurrentFrameIndex] },
+                { m_UboDescriptorSets[m_CurrentFrameIndex] },
                 { }
             );
+
+            commandBuffer.bindDescriptorSets(
+                vk::PipelineBindPoint::eGraphics,
+                m_PipelineLayout,
+                1,
+                { m_TextureDescriptorSets[MissingTexture] },
+                { }
+            );
+            commandBuffer.bindVertexBuffers(0, { m_ArenaVertexBuffer }, { 0 });
+            commandBuffer.bindIndexBuffer(m_ArenaIndexBuffer, 0, vk::IndexType::eUint16);
             commandBuffer.drawIndexed(static_cast<std::uint32_t>(ArenaIndices.size()), 1, 0, 0, 0);
+
+            commandBuffer.bindDescriptorSets(
+                vk::PipelineBindPoint::eGraphics,
+                m_PipelineLayout,
+                1,
+                { m_TextureDescriptorSets[DragonTexture] },
+                { }
+            );
+            commandBuffer.bindVertexBuffers(0, { m_DragonVertexBuffer }, { 0 });
+            commandBuffer.bindIndexBuffer(m_DragonIndexBuffer, 0, vk::IndexType::eUint32);
+            commandBuffer.drawIndexed(static_cast<std::uint32_t>(m_DragonIndices.size()), 1, 0, 0, 0);
         }
         commandBuffer.endRenderPass();
 
@@ -1709,10 +1947,13 @@ private:
         m_CurrentFrameIndex = (m_CurrentFrameIndex + 1) % MaxFramesInFlight;
     }
 
-    void TransitionImageLayout(vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout)
+    void TransitionImageLayout(
+        vk::CommandBuffer commandBuffer,
+        vk::Image image,
+        vk::ImageLayout oldLayout,
+        vk::ImageLayout newLayout
+    )
     {
-        const vk::CommandBuffer commandBuffer = BeginOneTimeCommands();
-
         vk::ImageMemoryBarrier barrier = {
             .oldLayout           = oldLayout,
             .newLayout           = newLayout,
@@ -1762,8 +2003,6 @@ private:
             { },
             { barrier }
         );
-
-        EndOneTimeCommands(commandBuffer);
     }
 
     void UpdateUniformBuffer(std::uint32_t currentImage) const
@@ -1774,7 +2013,7 @@ private:
         const UniformBufferObject ubo = {
             .Model = glm::mat4(1.0F),
             .View  = GetViewMatrix(),
-            .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.1F),
+            .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.01F),
         };
 
         if (void *const data = m_Device.mapMemory(m_UniformBuffersMemory[currentImage], 0, sizeof(ubo)))
@@ -1837,6 +2076,11 @@ private:
         m_Device.destroy(m_SwapChain);
 
         m_Device.destroy(m_TextureSampler);
+
+        m_Device.destroy(m_DragonTextureImageView);
+        m_Device.destroy(m_DragonTextureImage);
+        m_Device.free(m_DragonTextureImageMemory);
+
         m_Device.destroy(m_MissingTextureImageView);
         m_Device.destroy(m_MissingTextureImage);
         m_Device.free(m_MissingTextureImageMemory);
@@ -1848,14 +2092,20 @@ private:
         }
 
         m_Device.destroy(m_DescriptorPool);
-        m_Device.destroy(m_DescriptorSetLayout);
+        m_Device.destroy(m_SamplerDescriptorSetLayout);
+        m_Device.destroy(m_UboDescriptorSetLayout);
 
         m_Device.destroy(m_RenderPass);
 
-        m_Device.destroy(m_VertexBuffer);
-        m_Device.free(m_VertexBufferMemory);
-        m_Device.destroy(m_IndexBuffer);
-        m_Device.free(m_IndexBufferMemory);
+        m_Device.destroy(m_DragonVertexBuffer);
+        m_Device.free(m_DragonVertexBufferMemory);
+        m_Device.destroy(m_DragonIndexBuffer);
+        m_Device.free(m_DragonIndexBufferMemory);
+
+        m_Device.destroy(m_ArenaVertexBuffer);
+        m_Device.free(m_ArenaVertexBufferMemory);
+        m_Device.destroy(m_ArenaIndexBuffer);
+        m_Device.free(m_ArenaIndexBufferMemory);
 
         for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -1979,6 +2229,13 @@ private:
 
     static constexpr std::size_t FrameTimeSampleCount = 64;
 
+    enum : std::size_t
+    {
+        MissingTexture,
+        DragonTexture,
+        TextureCount,
+    };
+
 private:
     std::filesystem::path m_ResourcesPath;
 
@@ -2007,7 +2264,8 @@ private:
 
     vk::RenderPass m_RenderPass;
 
-    vk::DescriptorSetLayout m_DescriptorSetLayout;
+    vk::DescriptorSetLayout m_UboDescriptorSetLayout;
+    vk::DescriptorSetLayout m_SamplerDescriptorSetLayout;
     vk::PipelineLayout m_PipelineLayout;
     vk::Pipeline m_GraphicsPipeline;
 
@@ -2027,19 +2285,27 @@ private:
     vk::DeviceMemory m_DragonTextureImageMemory;
     vk::ImageView m_DragonTextureImageView;
 
+    std::vector<Vertex> m_DragonVertices;
+    std::vector<std::uint32_t> m_DragonIndices;
+
     vk::Sampler m_TextureSampler;
 
-    vk::Buffer m_VertexBuffer;
-    vk::DeviceMemory m_VertexBufferMemory;
+    vk::Buffer m_ArenaVertexBuffer;
+    vk::DeviceMemory m_ArenaVertexBufferMemory;
+    vk::Buffer m_ArenaIndexBuffer;
+    vk::DeviceMemory m_ArenaIndexBufferMemory;
 
-    vk::Buffer m_IndexBuffer;
-    vk::DeviceMemory m_IndexBufferMemory;
+    vk::Buffer m_DragonVertexBuffer;
+    vk::DeviceMemory m_DragonVertexBufferMemory;
+    vk::Buffer m_DragonIndexBuffer;
+    vk::DeviceMemory m_DragonIndexBufferMemory;
 
     std::vector<vk::Buffer> m_UniformBuffers;
     std::vector<vk::DeviceMemory> m_UniformBuffersMemory;
 
     vk::DescriptorPool m_DescriptorPool;
-    std::vector<vk::DescriptorSet> m_DescriptorSets;
+    std::vector<vk::DescriptorSet> m_UboDescriptorSets;
+    std::vector<vk::DescriptorSet> m_TextureDescriptorSets;
 
     std::uint32_t m_CurrentFrameIndex = 0;
     std::vector<vk::CommandBuffer> m_CommandBuffers;
@@ -2069,7 +2335,7 @@ private:
         glm::vec3 Right = { 1.0F, 0.0F, 0.0F };
         glm::vec3 Up = { 0.0F, -1.0F, 0.0F };
 
-        glm::vec3 Position = { 0.0F, 0.0F, 0.0F };
+        glm::vec3 Position = { 0.0F, 0.0F, -1.0F };
 
         float Yaw   = glm::half_pi<float>();
         float Pitch = 0.0F;
