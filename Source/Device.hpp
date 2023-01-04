@@ -8,6 +8,36 @@
 #include <set>
 #include <span>
 
+struct Buffer
+{
+    vk::Buffer Handle;
+    vk::DeviceMemory Memory;
+
+    void Destroy(vk::Device device)
+    {
+        device.destroyBuffer(Handle);
+        device.freeMemory(Memory);
+
+        Handle = nullptr;
+        Memory = nullptr;
+    }
+};
+
+struct Image
+{
+    vk::Image Handle;
+    vk::DeviceMemory Memory;
+
+    void Destroy(vk::Device device)
+    {
+        device.destroyImage(Handle);
+        device.freeMemory(Memory);
+
+        Handle = nullptr;
+        Memory = nullptr;
+    }
+};
+
 class Device
 {
 public:
@@ -50,6 +80,26 @@ public:
     );
 
     void Destroy();
+
+    [[nodiscard]]
+    std::uint32_t FindMemoryType(std::uint32_t typeBits, vk::MemoryPropertyFlags properties) const;
+
+    [[nodiscard]]
+    Buffer CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) const;
+
+    [[nodiscard]]
+    Image CreateImage(
+        std::uint32_t width,
+        std::uint32_t height,
+        vk::Format format,
+        vk::ImageTiling tiling,
+        vk::ImageUsageFlags usage,
+        vk::MemoryPropertyFlags properties
+    ) const;
+
+
+    [[nodiscard]]
+    vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const;
 
     [[nodiscard]]
     vk::PhysicalDevice GetPhysicalDevice() const

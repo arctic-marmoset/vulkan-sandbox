@@ -1,11 +1,14 @@
 #include "Device.hpp"
+#include "Model.hpp"
+#include "Tga.hpp"
 #include "Utility.hpp"
 
 #include <fmt/format.h>
 #include <GLFW/glfw3.h>
-#include <glm/gtc/matrix_transform.hpp>
-#include <tiny_obj_loader.h>
+#include <spdlog/spdlog.h>
 #include <vulkan/vulkan.hpp>
+
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
@@ -18,83 +21,14 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <numeric>
-#include <optional>
-#include <set>
 #include <stdexcept>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 constexpr std::array<const char *, 1> DeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
-struct Vertex
-{
-    glm::vec3 Position;
-    glm::vec2 TexCoord;
-
-    static constexpr vk::VertexInputBindingDescription GetBindingDescription()
-    {
-        return {
-            .binding   = 0,
-            .stride    = sizeof(Vertex),
-            .inputRate = vk::VertexInputRate::eVertex,
-        };
-    }
-
-    static constexpr auto GetAttributeDescriptions()
-    {
-        return std::to_array<vk::VertexInputAttributeDescription>({
-            {
-                .location = 0,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(Vertex, Position),
-            },
-            {
-                .location = 1,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32Sfloat,
-                .offset   = offsetof(Vertex, TexCoord),
-            },
-        });
-    }
-};
-
-struct Model
-{
-    struct
-    {
-        vk::Buffer Buffer;
-        vk::DeviceMemory Memory;
-    } Vertices;
-
-    struct
-    {
-        std::uint32_t Count = 0;
-        vk::Buffer Buffer;
-        vk::DeviceMemory Memory;
-    } Indices;
-
-    struct
-    {
-        vk::Image Image;
-        vk::DeviceMemory Memory;
-        vk::ImageView View;
-    } Texture;
-
-    void Init(vk::Device device, const char *meshPath, const char *texturePath)
-    {
-
-    }
-
-    void Destroy(vk::Device device)
-    {
-
-    }
 };
 
 constexpr std::uint32_t WindowWidth = 1280;
@@ -167,18 +101,19 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanDebugMessengerCallback(
     switch (severity)
     {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-        [[fallthrough]];
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        std::cout << "[VULKAN] " << data->pMessage << '\n';
+        spdlog::trace("[VULKAN] {}", data->pMessage);
         break;
-
-    default:
-        std::cerr << "[VULKAN] Unknown debug message severity\n";
-        [[fallthrough]];
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+        spdlog::debug("[VULKAN] {}", data->pMessage);
+        break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        spdlog::warn("[VULKAN] {}", data->pMessage);
+        break;
+    default:
+        spdlog::warn("[VULKAN] Unknown validation layer debug message severity - assuming ERROR level");
         [[fallthrough]];
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-        std::cerr << "[VULKAN] " << data->pMessage << '\n';
+        spdlog::error("[VULKAN] {}", data->pMessage);
         break;
     }
 
@@ -300,10 +235,10 @@ private:
         CreateCommandPool();
         CreateDepthResources();
         CreateFramebuffers();
-        CreateResources();
         CreateTextureSampler();
-        CreateUniformBuffers();
         CreateDescriptorPool();
+        CreateResources();
+        CreateUniformBuffers();
         CreateDescriptorSets();
         CreateCommandBuffers();
         CreateSyncObjects();
@@ -492,32 +427,18 @@ private:
         };
     }
 
-    [[nodiscard]]
-    vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const
-    {
-        const vk::ImageViewCreateInfo createInfo = {
-            .image              = image,
-            .viewType           = vk::ImageViewType::e2D,
-            .format             = format,
-            .subresourceRange   = {
-                .aspectMask     = aspectFlags,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1,
-            },
-        };
-
-        return m_Device.GetHandle().createImageView(createInfo);
-    }
-
     void CreateImageViews()
     {
         m_SwapChainImageViews.reserve(m_SwapChainImages.size());
 
         for (const auto &image : m_SwapChainImages)
         {
-            const auto imageView = CreateImageView(image, m_SwapChainImageFormat, vk::ImageAspectFlagBits::eColor);
+            const auto imageView = m_Device.CreateImageView(
+                image,
+                m_SwapChainImageFormat,
+                vk::ImageAspectFlagBits::eColor
+            );
+
             m_SwapChainImageViews.push_back(imageView);
         }
     }
@@ -808,119 +729,6 @@ private:
         m_CommandPool = m_Device.GetHandle().createCommandPool(createInfo);
     }
 
-    void CreateBuffer(
-        vk::DeviceSize size,
-        vk::BufferUsageFlags usage,
-        vk::MemoryPropertyFlags properties,
-        vk::Buffer &buffer,
-        vk::DeviceMemory &bufferMemory
-    )
-    {
-        const vk::BufferCreateInfo bufferInfo = {
-            .size        = size,
-            .usage       = usage,
-            .sharingMode = vk::SharingMode::eExclusive,
-        };
-
-        buffer = m_Device.GetHandle().createBuffer(bufferInfo);
-
-        const vk::MemoryRequirements memoryRequirements = m_Device.GetHandle().getBufferMemoryRequirements(buffer);
-
-        const std::uint32_t memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties);
-
-        const vk::MemoryAllocateInfo allocateInfo = {
-            .allocationSize  = memoryRequirements.size,
-            .memoryTypeIndex = memoryTypeIndex,
-        };
-
-        bufferMemory = m_Device.GetHandle().allocateMemory(allocateInfo);
-        m_Device.GetHandle().bindBufferMemory(buffer, bufferMemory, 0);
-    }
-
-    void CopyBuffer(vk::CommandBuffer commandBuffer, vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
-    {
-        const vk::BufferCopy copyRegion = {
-            .srcOffset = 0,
-            .dstOffset = 0,
-            .size      = size,
-        };
-
-        commandBuffer.copyBuffer(source, destination, copyRegion);
-    }
-
-    void CopyBufferToImage(
-        vk::CommandBuffer commandBuffer,
-        VkBuffer buffer,
-        VkImage image,
-        uint32_t width,
-        uint32_t height
-    )
-    {
-        const vk::BufferImageCopy region = {
-            .bufferOffset       = 0,
-            .bufferRowLength    = 0,
-            .bufferImageHeight  = 0,
-            .imageSubresource   = {
-                .aspectMask     = vk::ImageAspectFlagBits::eColor,
-                .mipLevel       = 0,
-                .baseArrayLayer = 0,
-                .layerCount     = 1,
-            },
-            .imageOffset        = {
-                .x              = 0,
-                .y              = 0,
-                .z              = 0,
-            },
-            .imageExtent        = {
-                .width          = width,
-                .height         = height,
-                .depth          = 1,
-            },
-        };
-
-        commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, { region });
-    }
-
-    void CreateImage(
-        std::uint32_t width,
-        std::uint32_t height,
-        vk::Format format,
-        vk::ImageTiling tiling,
-        vk::ImageUsageFlags usage,
-        vk::MemoryPropertyFlags properties,
-        vk::Image &image,
-        vk::DeviceMemory &imageMemory
-    )
-    {
-        const vk::ImageCreateInfo createInfo = {
-            .imageType   = vk::ImageType::e2D,
-            .format      = format,
-            .extent      = {
-                .width   = width,
-                .height  = height,
-                .depth   = 1,
-            },
-            .mipLevels   = 1,
-            .arrayLayers = 1,
-            .samples     = vk::SampleCountFlagBits::e1,
-            .tiling      = tiling,
-            .usage       = usage,
-            .sharingMode = vk::SharingMode::eExclusive,
-        };
-
-        image = m_Device.GetHandle().createImage(createInfo);
-
-        const vk::MemoryRequirements memoryRequirements = m_Device.GetHandle().getImageMemoryRequirements(image);
-
-        const vk::MemoryAllocateInfo allocInfo = {
-            .allocationSize = memoryRequirements.size,
-            .memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties),
-        };
-
-        imageMemory = m_Device.GetHandle().allocateMemory(allocInfo);
-        m_Device.GetHandle().bindImageMemory(image, imageMemory, 0);
-    }
-
     template<typename InputIterator>
     vk::Format FindSupportedFormat(
         InputIterator begin,
@@ -977,18 +785,16 @@ private:
     {
         const vk::Format depthFormat = FindDepthFormat();
 
-        CreateImage(
+        m_DepthImage = m_Device.CreateImage(
             m_SwapChainExtent.width,
             m_SwapChainExtent.height,
             depthFormat,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eDepthStencilAttachment,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_DepthImage,
-            m_DepthImageMemory
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
-        m_DepthImageView = CreateImageView(m_DepthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+        m_DepthImageView = m_Device.CreateImageView(m_DepthImage.Handle, depthFormat, vk::ImageAspectFlagBits::eDepth);
     }
 
     void CreateResources()
@@ -997,341 +803,142 @@ private:
 
         // Transfer arena vertices to GPU memory.
 
-        constexpr vk::DeviceSize arenaVerticesSize =
-            sizeof(decltype(ArenaVertices)::value_type) * ArenaVertices.size();
+        constexpr vk::DeviceSize arenaVerticesSize = SizeInBytes(ArenaVertices);
 
-        vk::Buffer arenaVerticesStagingBuffer;
-        vk::DeviceMemory arenaVerticesStagingBufferMemory;
-        CreateBuffer(
+        Buffer arenaVerticesStagingBuffer = m_Device.CreateBuffer(
             arenaVerticesSize,
             vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            arenaVerticesStagingBuffer,
-            arenaVerticesStagingBufferMemory
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
-        if (void *data = m_Device.GetHandle().mapMemory(arenaVerticesStagingBufferMemory, 0, arenaVerticesSize))
+        if (void *data = m_Device.GetHandle().mapMemory(arenaVerticesStagingBuffer.Memory, 0, arenaVerticesSize))
         {
             std::memcpy(data, ArenaVertices.data(), arenaVerticesSize);
-            m_Device.GetHandle().unmapMemory(arenaVerticesStagingBufferMemory);
+            m_Device.GetHandle().unmapMemory(arenaVerticesStagingBuffer.Memory);
         }
         else
         {
             throw std::runtime_error("Failed to map staging buffer memory for vertices");
         }
 
-        CreateBuffer(
+        m_ArenaVertexBuffer = m_Device.CreateBuffer(
             arenaVerticesSize,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_ArenaVertexBuffer,
-            m_ArenaVertexBufferMemory
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
-        CopyBuffer(loadResourcesCommands, arenaVerticesStagingBuffer, m_ArenaVertexBuffer, arenaVerticesSize);
+        CopyBuffer(
+            loadResourcesCommands,
+            arenaVerticesStagingBuffer.Handle,
+            m_ArenaVertexBuffer.Handle,
+            arenaVerticesSize
+        );
 
         // Transfer arena indices to GPU memory.
 
-        constexpr vk::DeviceSize arenaIndicesSize =
-            sizeof(decltype(ArenaIndices)::value_type) * ArenaIndices.size();
+        constexpr vk::DeviceSize arenaIndicesSize = SizeInBytes(ArenaIndices);
 
-        vk::Buffer arenaIndicesStagingBuffer;
-        vk::DeviceMemory arenaIndicesStagingBufferMemory;
-        CreateBuffer(
+        Buffer arenaIndicesStagingBuffer = m_Device.CreateBuffer(
             arenaIndicesSize,
             vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            arenaIndicesStagingBuffer,
-            arenaIndicesStagingBufferMemory
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
-        if (void *data = m_Device.GetHandle().mapMemory(arenaIndicesStagingBufferMemory, 0, arenaIndicesSize))
+        WithMappedMemory(m_Device.GetHandle(), arenaIndicesStagingBuffer.Memory, 0, arenaIndicesSize, [&](void *destination)
         {
-            std::memcpy(data, ArenaIndices.data(), arenaIndicesSize);
-            m_Device.GetHandle().unmapMemory(arenaIndicesStagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map staging buffer memory for indices");
-        }
+            std::memcpy(destination, ArenaIndices.data(), arenaIndicesSize);
+        });
 
-        CreateBuffer(
+        m_ArenaIndexBuffer = m_Device.CreateBuffer(
             arenaIndicesSize,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_ArenaIndexBuffer,
-            m_ArenaIndexBufferMemory
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
-        CopyBuffer(loadResourcesCommands, arenaIndicesStagingBuffer, m_ArenaIndexBuffer, arenaIndicesSize);
-
-        // Load dragon mesh.
-
-        tinyobj::ObjReader reader;
-        if (!reader.ParseFromFile(GetResourcePath("Meshes/StanfordDragon.obj")))
-        {
-            throw std::runtime_error("Failed to load Stanford dragon mesh");
-        }
-
-        if (!reader.Warning().empty())
-        {
-            std::cout << "TinyObjReader Warning: " << reader.Warning();
-        }
-
-        const tinyobj::attrib_t &attrib = reader.GetAttrib();
-        const tinyobj::shape_t &shape = reader.GetShapes()[0];
-
-        std::size_t indexOffset = 0;
-        for (std::size_t faceIndex = 0; faceIndex < shape.mesh.num_face_vertices.size(); ++faceIndex)
-        {
-            const std::size_t faceVertexCount = shape.mesh.num_face_vertices[faceIndex];
-
-            for (std::size_t vertexIndex = 0; vertexIndex < faceVertexCount; ++vertexIndex)
-            {
-                constexpr std::size_t vertexDimensionCount = 3;
-                const tinyobj::index_t index = shape.mesh.indices[vertexIndex + indexOffset];
-                const tinyobj::real_t xPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 0];
-                const tinyobj::real_t yPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 1];
-                const tinyobj::real_t zPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 2];
-
-                assert("Meshes should contain texture coordinate info" && index.texcoord_index >= 0);
-                constexpr std::size_t textureDimensionCount = 2;
-                const tinyobj::real_t u = attrib.texcoords[textureDimensionCount * (std::size_t)index.texcoord_index + 0];
-                const tinyobj::real_t v = attrib.texcoords[textureDimensionCount * (std::size_t)index.texcoord_index + 1];
-
-                const Vertex vertex = {
-                    .Position = { xPos, yPos, zPos },
-                    .TexCoord = { u, v },
-                };
-
-                m_DragonVertices.push_back(vertex);
-            }
-
-            indexOffset += faceVertexCount;
-        }
-
-        m_DragonIndices.resize(m_DragonVertices.size());
-        std::iota(m_DragonIndices.begin(), m_DragonIndices.end(), 0);
-
-        // Copy dragon vertices to GPU memory.
-
-        const vk::DeviceSize dragonVerticesSize =
-            sizeof(decltype(m_DragonVertices)::value_type) * m_DragonVertices.size();
-
-        vk::Buffer dragonVerticesStagingBuffer;
-        vk::DeviceMemory dragonVerticesStagingBufferMemory;
-        CreateBuffer(
-            dragonVerticesSize,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            dragonVerticesStagingBuffer,
-            dragonVerticesStagingBufferMemory
+        CopyBuffer(
+            loadResourcesCommands,
+            arenaIndicesStagingBuffer.Handle,
+            m_ArenaIndexBuffer.Handle,
+            arenaIndicesSize
         );
-
-        if (void *data = m_Device.GetHandle().mapMemory(dragonVerticesStagingBufferMemory, 0, dragonVerticesSize))
-        {
-            std::memcpy(data, m_DragonVertices.data(), dragonVerticesSize);
-            m_Device.GetHandle().unmapMemory(dragonVerticesStagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map staging buffer memory for vertices");
-        }
-
-        CreateBuffer(
-            dragonVerticesSize,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_DragonVertexBuffer,
-            m_DragonVertexBufferMemory
-        );
-
-        CopyBuffer(loadResourcesCommands, dragonVerticesStagingBuffer, m_DragonVertexBuffer, dragonVerticesSize);
-
-        // Copy dragon indices to GPU memory.
-
-        const vk::DeviceSize dragonIndicesSize =
-            sizeof(decltype(m_DragonIndices)::value_type) * m_DragonIndices.size();
-
-        vk::Buffer dragonIndicesStagingBuffer;
-        vk::DeviceMemory dragonIndicesStagingBufferMemory;
-        CreateBuffer(
-            dragonIndicesSize,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            dragonIndicesStagingBuffer,
-            dragonIndicesStagingBufferMemory
-        );
-
-        if (void *data = m_Device.GetHandle().mapMemory(dragonIndicesStagingBufferMemory, 0, dragonIndicesSize))
-        {
-            std::memcpy(data, m_DragonIndices.data(), dragonIndicesSize);
-            m_Device.GetHandle().unmapMemory(dragonIndicesStagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map staging buffer memory for vertices");
-        }
-
-        CreateBuffer(
-            dragonIndicesSize,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_DragonIndexBuffer,
-            m_DragonIndexBufferMemory
-        );
-
-        CopyBuffer(loadResourcesCommands, dragonIndicesStagingBuffer, m_DragonIndexBuffer, dragonIndicesSize);
 
         // Copy textures to GPU memory.
 
-        const std::vector<std::uint8_t> missingTextureFileBytes =
-            ReadFile(GetResourcePath("Textures/Missing_Raw.tga").c_str());
+        const Tga::Image missingTexture = Tga::Image::Load(GetResourcePath("Textures/Missing_Raw.tga").c_str());
 
-        const Tga::File missingTexture = Tga::File::CreateFrom(missingTextureFileBytes);
-
-        vk::Buffer missingTextureStagingBuffer;
-        vk::DeviceMemory missingTextureStagingBufferMemory;
-        CreateBuffer(
+        Buffer missingTextureStagingBuffer = m_Device.CreateBuffer(
             missingTexture.GetSize(),
             vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            missingTextureStagingBuffer,
-            missingTextureStagingBufferMemory
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
-        if (void *const data = m_Device.GetHandle().mapMemory(missingTextureStagingBufferMemory, 0, missingTexture.GetSize()))
+        WithMappedMemory(m_Device.GetHandle(), missingTextureStagingBuffer.Memory, 0, missingTexture.GetSize(), [&](void *destination)
         {
-            std::memcpy(data, missingTexture.Pixels.data(), missingTexture.Pixels.size());
-            m_Device.GetHandle().unmapMemory(missingTextureStagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map texture memory");
-        }
+            std::memcpy(destination, missingTexture.Pixels.data(), missingTexture.Pixels.size());
+        });
 
-        CreateImage(
+        m_MissingTextureImage = m_Device.CreateImage(
             missingTexture.Width,
             missingTexture.Height,
             vk::Format::eB8G8R8A8Srgb,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_MissingTextureImage,
-            m_MissingTextureImageMemory
+            vk::MemoryPropertyFlagBits::eDeviceLocal
+        );
+
+        m_MissingTextureImageView = m_Device.CreateImageView(
+            m_MissingTextureImage.Handle,
+            vk::Format::eB8G8R8A8Srgb,
+            vk::ImageAspectFlagBits::eColor
         );
 
         TransitionImageLayout(
             loadResourcesCommands,
-            m_MissingTextureImage,
+            m_MissingTextureImage.Handle,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eTransferDstOptimal
         );
 
         CopyBufferToImage(
             loadResourcesCommands,
-            missingTextureStagingBuffer,
-            m_MissingTextureImage,
+            missingTextureStagingBuffer.Handle,
+            m_MissingTextureImage.Handle,
             missingTexture.Width,
             missingTexture.Height
         );
 
         TransitionImageLayout(
             loadResourcesCommands,
-            m_MissingTextureImage,
+            m_MissingTextureImage.Handle,
             vk::ImageLayout::eTransferDstOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal
         );
 
-        const std::vector<std::uint8_t> dragonTextureFileBytes =
-            ReadFile(GetResourcePath("Textures/StanfordDragon_Albedo_Raw.tga").c_str());
+        // Load dragon mesh.
 
-        const Tga::File dragonTexture = Tga::File::CreateFrom(dragonTextureFileBytes);
-
-        vk::Buffer dragonTextureStagingBuffer;
-        vk::DeviceMemory dragonTextureStagingBufferMemory;
-        CreateBuffer(
-            dragonTexture.GetSize(),
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            dragonTextureStagingBuffer,
-            dragonTextureStagingBufferMemory
+        m_DragonModel.Load(
+            GetResourcePath("Meshes/StanfordDragon.obj").c_str(),
+            GetResourcePath("Textures/StanfordDragon_Albedo_Raw.tga").c_str()
         );
 
-        if (void *const data = m_Device.GetHandle().mapMemory(dragonTextureStagingBufferMemory, 0, dragonTexture.GetSize()))
-        {
-            std::memcpy(data, dragonTexture.Pixels.data(), dragonTexture.Pixels.size());
-            m_Device.GetHandle().unmapMemory(dragonTextureStagingBufferMemory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map texture memory");
-        }
-
-        CreateImage(
-            dragonTexture.Width,
-            dragonTexture.Height,
-            vk::Format::eB8G8R8A8Srgb,
-            vk::ImageTiling::eOptimal,
-            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            m_DragonTextureImage,
-            m_DragonTextureImageMemory
-        );
-
-        TransitionImageLayout(
-            loadResourcesCommands,
-            m_DragonTextureImage,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal
-        );
-
-        CopyBufferToImage(
-            loadResourcesCommands,
-            dragonTextureStagingBuffer,
-            m_DragonTextureImage,
-            dragonTexture.Width,
-            dragonTexture.Height
-        );
-
-        TransitionImageLayout(
-            loadResourcesCommands,
-            m_DragonTextureImage,
-            vk::ImageLayout::eTransferDstOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal
+        std::array stagingBuffers = m_DragonModel.Init(
+            m_Device,
+            m_SamplerDescriptorSetLayout,
+            m_DescriptorPool,
+            m_TextureSampler,
+            loadResourcesCommands
         );
 
         EndOneTimeCommands(loadResourcesCommands);
 
-        m_Device.GetHandle().destroy(dragonTextureStagingBuffer);
-        m_Device.GetHandle().free(dragonTextureStagingBufferMemory);
+        missingTextureStagingBuffer.Destroy(m_Device.GetHandle());
+        arenaIndicesStagingBuffer.Destroy(m_Device.GetHandle());
+        arenaVerticesStagingBuffer.Destroy(m_Device.GetHandle());
 
-        m_Device.GetHandle().destroy(missingTextureStagingBuffer);
-        m_Device.GetHandle().free(missingTextureStagingBufferMemory);
-
-        m_Device.GetHandle().destroy(dragonIndicesStagingBuffer);
-        m_Device.GetHandle().free(dragonIndicesStagingBufferMemory);
-
-        m_Device.GetHandle().destroy(dragonVerticesStagingBuffer);
-        m_Device.GetHandle().free(dragonVerticesStagingBufferMemory);
-
-        m_Device.GetHandle().destroy(arenaIndicesStagingBuffer);
-        m_Device.GetHandle().free(arenaIndicesStagingBufferMemory);
-
-        m_Device.GetHandle().destroy(arenaVerticesStagingBuffer);
-        m_Device.GetHandle().free(arenaVerticesStagingBufferMemory);
-
-        m_MissingTextureImageView = CreateImageView(
-            m_MissingTextureImage,
-            vk::Format::eB8G8R8A8Srgb,
-            vk::ImageAspectFlagBits::eColor
-        );
-
-        m_DragonTextureImageView = CreateImageView(
-            m_DragonTextureImage,
-            vk::Format::eB8G8R8A8Srgb,
-            vk::ImageAspectFlagBits::eColor
-        );
+        for (Buffer &buffer : stagingBuffers)
+        {
+            buffer.Destroy(m_Device.GetHandle());
+        }
     }
 
     void CreateTextureSampler()
@@ -1364,16 +971,13 @@ private:
         constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
         m_UniformBuffers.resize(MaxFramesInFlight);
-        m_UniformBuffersMemory.resize(MaxFramesInFlight);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
-            CreateBuffer(
+            m_UniformBuffers[i] = m_Device.CreateBuffer(
                 bufferSize,
                 vk::BufferUsageFlagBits::eUniformBuffer,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-                m_UniformBuffers[i],
-                m_UniformBuffersMemory[i]
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
             );
         }
     }
@@ -1415,9 +1019,9 @@ private:
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
             const vk::DescriptorBufferInfo bufferInfo = {
-                .buffer = m_UniformBuffers[i],
+                .buffer = m_UniformBuffers[i].Handle,
                 .offset = 0,
-                .range  = sizeof(::UniformBufferObject),
+                .range  = sizeof(UniformBufferObject),
             };
 
             const vk::WriteDescriptorSet descriptorWrite = {
@@ -1432,15 +1036,13 @@ private:
             m_Device.GetHandle().updateDescriptorSets({ descriptorWrite }, { });
         }
 
-        const std::vector<vk::DescriptorSetLayout> textureLayouts(TextureCount, m_SamplerDescriptorSetLayout);
-
         const vk::DescriptorSetAllocateInfo textureAllocInfo = {
             .descriptorPool     = m_DescriptorPool,
-            .descriptorSetCount = TextureCount,
-            .pSetLayouts        = textureLayouts.data(),
+            .descriptorSetCount = 1,
+            .pSetLayouts        = &m_SamplerDescriptorSetLayout,
         };
 
-        m_TextureDescriptorSets = m_Device.GetHandle().allocateDescriptorSets(textureAllocInfo);
+        (void)m_Device.GetHandle().allocateDescriptorSets(&textureAllocInfo, &m_MissingTextureDescriptorSet);
 
         const vk::DescriptorImageInfo missingTextureImageInfo = {
             .sampler     = m_TextureSampler,
@@ -1449,7 +1051,7 @@ private:
         };
 
         const vk::WriteDescriptorSet missingTextureDescriptorWrite = {
-            .dstSet          = m_TextureDescriptorSets[MissingTexture],
+            .dstSet          = m_MissingTextureDescriptorSet,
             .dstBinding      = 0,
             .dstArrayElement = 0,
             .descriptorCount = 1,
@@ -1458,52 +1060,6 @@ private:
         };
 
         m_Device.GetHandle().updateDescriptorSets({ missingTextureDescriptorWrite }, { });
-
-        const vk::DescriptorImageInfo dragonTextureImageInfo = {
-            .sampler     = m_TextureSampler,
-            .imageView   = m_DragonTextureImageView,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        };
-
-        const vk::WriteDescriptorSet dragonTextureDescriptorWrite = {
-            .dstSet          = m_TextureDescriptorSets[DragonTexture],
-            .dstBinding      = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
-            .pImageInfo      = &dragonTextureImageInfo,
-        };
-
-        m_Device.GetHandle().updateDescriptorSets({ dragonTextureDescriptorWrite }, { });
-    }
-
-    std::uint32_t FindMemoryType(std::uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-    {
-        constexpr auto filterBitCount = std::numeric_limits<decltype(typeFilter)>::digits;
-        const std::bitset<filterBitCount> eligibleTypes(typeFilter);
-
-        const auto isTypePresent = [&eligibleTypes](std::uint32_t index)
-        {
-            return eligibleTypes.test(index);
-        };
-
-        const vk::PhysicalDeviceMemoryProperties &memoryProperties = m_Device.GetMemoryProperties();
-        const auto arePropertiesPresent = [&properties](const vk::MemoryType &memoryType)
-        {
-            return (memoryType.propertyFlags & properties) == properties;
-        };
-
-        for (std::uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
-        {
-            const auto &candidateType = memoryProperties.memoryTypes[i];
-            if (isTypePresent(i)
-                && arePropertiesPresent(candidateType))
-            {
-                return i;
-            }
-        }
-
-        throw std::runtime_error("Failed to find a suitable memory type");
     }
 
     void CreateCommandBuffers()
@@ -1616,23 +1172,23 @@ private:
                 vk::PipelineBindPoint::eGraphics,
                 m_PipelineLayout,
                 1,
-                { m_TextureDescriptorSets[MissingTexture] },
+                { m_MissingTextureDescriptorSet },
                 { }
             );
-            commandBuffer.bindVertexBuffers(0, { m_ArenaVertexBuffer }, { 0 });
-            commandBuffer.bindIndexBuffer(m_ArenaIndexBuffer, 0, vk::IndexType::eUint16);
+            commandBuffer.bindVertexBuffers(0, { m_ArenaVertexBuffer.Handle }, { 0 });
+            commandBuffer.bindIndexBuffer(m_ArenaIndexBuffer.Handle, 0, vk::IndexType::eUint16);
             commandBuffer.drawIndexed(static_cast<std::uint32_t>(ArenaIndices.size()), 1, 0, 0, 0);
 
             commandBuffer.bindDescriptorSets(
                 vk::PipelineBindPoint::eGraphics,
                 m_PipelineLayout,
                 1,
-                { m_TextureDescriptorSets[DragonTexture] },
+                { m_DragonModel.Texture.DescriptorSet },
                 { }
             );
-            commandBuffer.bindVertexBuffers(0, { m_DragonVertexBuffer }, { 0 });
-            commandBuffer.bindIndexBuffer(m_DragonIndexBuffer, 0, vk::IndexType::eUint32);
-            commandBuffer.drawIndexed(static_cast<std::uint32_t>(m_DragonIndices.size()), 1, 0, 0, 0);
+            commandBuffer.bindVertexBuffers(0, { m_DragonModel.Vertices.Buffer.Handle }, { 0 });
+            commandBuffer.bindIndexBuffer(m_DragonModel.Indices.Buffer.Handle, 0, vk::IndexType::eUint32);
+            commandBuffer.drawIndexed(m_DragonModel.Indices.Count, 1, 0, 0, 0);
         }
         commandBuffer.endRenderPass();
 
@@ -1753,6 +1309,7 @@ private:
                 }
             }
 
+            [[nodiscard]]
             bool Any() const
             {
                 return Forward || Backward || Left || Right;
@@ -1917,64 +1474,6 @@ private:
         m_CurrentFrameIndex = (m_CurrentFrameIndex + 1) % MaxFramesInFlight;
     }
 
-    void TransitionImageLayout(
-        vk::CommandBuffer commandBuffer,
-        vk::Image image,
-        vk::ImageLayout oldLayout,
-        vk::ImageLayout newLayout
-    )
-    {
-        vk::ImageMemoryBarrier barrier = {
-            .oldLayout           = oldLayout,
-            .newLayout           = newLayout,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image               = image,
-            .subresourceRange    = {
-                .aspectMask      = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel    = 0,
-                .levelCount      = 1,
-                .baseArrayLayer  = 0,
-                .layerCount      = 1,
-            },
-        };
-
-        vk::PipelineStageFlags sourceStage;
-        vk::PipelineStageFlags destinationStage;
-
-        if (oldLayout == vk::ImageLayout::eUndefined
-            && newLayout == vk::ImageLayout::eTransferDstOptimal)
-        {
-            barrier.srcAccessMask = vk::AccessFlagBits::eNone;
-            barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-
-            sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
-            destinationStage = vk::PipelineStageFlagBits::eTransfer;
-        }
-        else if (oldLayout == vk::ImageLayout::eTransferDstOptimal
-                 && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
-        {
-            barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-            barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-
-            sourceStage = vk::PipelineStageFlagBits::eTransfer;
-            destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
-        }
-        else
-        {
-            throw std::invalid_argument("Unsupported layout transition");
-        }
-
-        commandBuffer.pipelineBarrier(
-            sourceStage,
-            destinationStage,
-            { },
-            { },
-            { },
-            { barrier }
-        );
-    }
-
     void UpdateUniformBuffer(std::uint32_t currentImage) const
     {
         const float aspectRatio =
@@ -1986,10 +1485,10 @@ private:
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.01F),
         };
 
-        if (void *const data = m_Device.GetHandle().mapMemory(m_UniformBuffersMemory[currentImage], 0, sizeof(ubo)))
+        if (void *const data = m_Device.GetHandle().mapMemory(m_UniformBuffers[currentImage].Memory, 0, sizeof(ubo)))
         {
             std::memcpy(data, &ubo, sizeof(ubo));
-            m_Device.GetHandle().unmapMemory(m_UniformBuffersMemory[currentImage]);
+            m_Device.GetHandle().unmapMemory(m_UniformBuffers[currentImage].Memory);
         }
         else
         {
@@ -2022,8 +1521,7 @@ private:
     void CleanupSwapChain()
     {
         m_Device.GetHandle().destroy(m_DepthImageView);
-        m_Device.GetHandle().destroy(m_DepthImage);
-        m_Device.GetHandle().free(m_DepthImageMemory);
+        m_DepthImage.Destroy(m_Device.GetHandle());
 
         for (auto framebuffer : m_SwapChainFramebuffers)
         {
@@ -2047,18 +1545,14 @@ private:
 
         m_Device.GetHandle().destroy(m_TextureSampler);
 
-        m_Device.GetHandle().destroy(m_DragonTextureImageView);
-        m_Device.GetHandle().destroy(m_DragonTextureImage);
-        m_Device.GetHandle().free(m_DragonTextureImageMemory);
+        m_DragonModel.Destroy(m_Device.GetHandle());
 
         m_Device.GetHandle().destroy(m_MissingTextureImageView);
-        m_Device.GetHandle().destroy(m_MissingTextureImage);
-        m_Device.GetHandle().free(m_MissingTextureImageMemory);
+        m_MissingTextureImage.Destroy(m_Device.GetHandle());
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
-            m_Device.GetHandle().destroy(m_UniformBuffers[i]);
-            m_Device.GetHandle().free(m_UniformBuffersMemory[i]);
+            m_UniformBuffers[i].Destroy(m_Device.GetHandle());
         }
 
         m_Device.GetHandle().destroy(m_DescriptorPool);
@@ -2067,15 +1561,8 @@ private:
 
         m_Device.GetHandle().destroy(m_RenderPass);
 
-        m_Device.GetHandle().destroy(m_DragonVertexBuffer);
-        m_Device.GetHandle().free(m_DragonVertexBufferMemory);
-        m_Device.GetHandle().destroy(m_DragonIndexBuffer);
-        m_Device.GetHandle().free(m_DragonIndexBufferMemory);
-
-        m_Device.GetHandle().destroy(m_ArenaVertexBuffer);
-        m_Device.GetHandle().free(m_ArenaVertexBufferMemory);
-        m_Device.GetHandle().destroy(m_ArenaIndexBuffer);
-        m_Device.GetHandle().free(m_ArenaIndexBufferMemory);
+        m_ArenaVertexBuffer.Destroy(m_Device.GetHandle());
+        m_ArenaIndexBuffer.Destroy(m_Device.GetHandle());
 
         for (std::uint32_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -2196,15 +1683,12 @@ private:
 
     static constexpr char DefaultTitle[] = "Vulkan Renderer";
     static constexpr std::size_t MaxTitleLength = 256;
+    static_assert(std::size(DefaultTitle) <= MaxTitleLength);
 
     static constexpr std::size_t FrameTimeSampleCount = 64;
 
-    enum : std::size_t
-    {
-        MissingTexture,
-        DragonTexture,
-        TextureCount,
-    };
+    // TODO: This should be determined at runtime.
+    static constexpr std::size_t TextureCount = 2;
 
 private:
     std::filesystem::path m_ResourcesPath;
@@ -2241,39 +1725,23 @@ private:
 
     vk::CommandPool m_CommandPool;
 
-    vk::Image m_DepthImage;
-    vk::DeviceMemory m_DepthImageMemory;
+    Image m_DepthImage;
     vk::ImageView m_DepthImageView;
-
-    vk::Image m_MissingTextureImage;
-    vk::DeviceMemory m_MissingTextureImageMemory;
-    vk::ImageView m_MissingTextureImageView;
-
-    vk::Image m_DragonTextureImage;
-    vk::DeviceMemory m_DragonTextureImageMemory;
-    vk::ImageView m_DragonTextureImageView;
-
-    std::vector<Vertex> m_DragonVertices;
-    std::vector<std::uint32_t> m_DragonIndices;
 
     vk::Sampler m_TextureSampler;
 
-    vk::Buffer m_ArenaVertexBuffer;
-    vk::DeviceMemory m_ArenaVertexBufferMemory;
-    vk::Buffer m_ArenaIndexBuffer;
-    vk::DeviceMemory m_ArenaIndexBufferMemory;
-
-    vk::Buffer m_DragonVertexBuffer;
-    vk::DeviceMemory m_DragonVertexBufferMemory;
-    vk::Buffer m_DragonIndexBuffer;
-    vk::DeviceMemory m_DragonIndexBufferMemory;
-
-    std::vector<vk::Buffer> m_UniformBuffers;
-    std::vector<vk::DeviceMemory> m_UniformBuffersMemory;
-
     vk::DescriptorPool m_DescriptorPool;
+
+    Buffer m_ArenaVertexBuffer;
+    Buffer m_ArenaIndexBuffer;
+    Image m_MissingTextureImage;
+    vk::ImageView m_MissingTextureImageView;
+    vk::DescriptorSet m_MissingTextureDescriptorSet;
+
+    Model m_DragonModel;
+
+    std::vector<Buffer> m_UniformBuffers;
     std::vector<vk::DescriptorSet> m_UboDescriptorSets;
-    std::vector<vk::DescriptorSet> m_TextureDescriptorSets;
 
     std::uint32_t m_CurrentFrameIndex = 0;
     std::vector<vk::CommandBuffer> m_CommandBuffers;
@@ -2311,7 +1779,7 @@ private:
 
     Camera m_Camera;
 
-    std::array<char, MaxTitleLength> m_Title;
+    std::array<char, MaxTitleLength> m_Title = { };
 };
 
 constexpr std::string_view ResourcesPathFlag = "--resources-path";
@@ -2338,14 +1806,14 @@ int main(int argc, char *argv[])
             }
             else
             {
-                std::cerr << "\"" << ResourcesPathFlag << "\" was specified, but no value was given\n";
-                std::cerr << "Usage: " << ResourcesPathFlag << FlagDelimiter << "{ABSOLUTE_PATH_TO_DIR}\n";
+                std::printf("\"%s\" was specified, but no value was given\n", ResourcesPathFlag.data());
+                std::fprintf(stderr, "Usage: %s%c{ABSOLUTE_PATH_TO_DIR}\n", ResourcesPathFlag.data(), FlagDelimiter);
                 return EXIT_FAILURE;
             }
         }
         else
         {
-            std::cerr << "Unrecognised argument: \"" << arg << "\" - ignoring\n";
+            std::fprintf(stderr, "Unrecognised argument: %s - ignoring", arg.data());
         }
     }
 
@@ -2355,7 +1823,7 @@ int main(int argc, char *argv[])
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        spdlog::error("Fatal error: {}", e.what());
         return EXIT_FAILURE;
     }
 

@@ -15,14 +15,6 @@
 #include <stdexcept>
 #include <vector>
 
-#if defined(_MSC_VER)
-#define VULKAN_RENDERER_PACKED
-#elif defined(__GNUC__) || defined(__GNUG__) || defined(__clang__)
-#define VULKAN_RENDERER_PACKED __attribute__((packed))
-#else
-#error "Unsupported compiler. This project currently only supports MSVC, GCC, and Clang."
-#endif
-
 struct SwapChainSupportDetails
 {
     vk::SurfaceCapabilitiesKHR Capabilities;
@@ -60,6 +52,141 @@ namespace vkm
     }
 }
 
+template<typename Container>
+constexpr std::size_t SizeInBytes(const Container &container)
+{
+    return std::size(container) * sizeof(typename Container::value_type);
+}
+
+template<typename T, std::size_t N>
+constexpr std::size_t SizeInBytes(const T (&container)[N])
+{
+    return sizeof(container);
+}
+
+template<typename Callback>
+void WithMappedMemory(
+    vk::Device device,
+    vk::DeviceMemory memory,
+    std::uint32_t offset,
+    vk::DeviceSize size,
+    Callback &&callback
+)
+{
+    void *mappedMemory = device.mapMemory(memory, offset, size);
+
+    if (!mappedMemory)
+    {
+        throw std::runtime_error("Failed to map memory");
+    }
+
+    callback(mappedMemory);
+
+    device.unmapMemory(memory);
+}
+
+inline void CopyBuffer(vk::CommandBuffer commandBuffer, vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
+{
+    const vk::BufferCopy copyRegion = {
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size      = size,
+    };
+
+    commandBuffer.copyBuffer(source, destination, copyRegion);
+}
+
+inline void CopyBufferToImage(
+    vk::CommandBuffer commandBuffer,
+    VkBuffer buffer,
+    VkImage image,
+    uint32_t width,
+    uint32_t height
+)
+{
+    const vk::BufferImageCopy region = {
+        .bufferOffset       = 0,
+        .bufferRowLength    = 0,
+        .bufferImageHeight  = 0,
+        .imageSubresource   = {
+            .aspectMask     = vk::ImageAspectFlagBits::eColor,
+            .mipLevel       = 0,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+        .imageOffset        = {
+            .x              = 0,
+            .y              = 0,
+            .z              = 0,
+        },
+        .imageExtent        = {
+            .width          = width,
+            .height         = height,
+            .depth          = 1,
+        },
+    };
+
+    commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, { region });
+}
+
+inline void TransitionImageLayout(
+    vk::CommandBuffer commandBuffer,
+    vk::Image image,
+    vk::ImageLayout oldLayout,
+    vk::ImageLayout newLayout
+)
+{
+    vk::ImageMemoryBarrier barrier = {
+        .oldLayout           = oldLayout,
+        .newLayout           = newLayout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image               = image,
+        .subresourceRange    = {
+            .aspectMask      = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel    = 0,
+            .levelCount      = 1,
+            .baseArrayLayer  = 0,
+            .layerCount      = 1,
+        },
+    };
+
+    vk::PipelineStageFlags sourceStage;
+    vk::PipelineStageFlags destinationStage;
+
+    if (oldLayout == vk::ImageLayout::eUndefined
+        && newLayout == vk::ImageLayout::eTransferDstOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        destinationStage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (oldLayout == vk::ImageLayout::eTransferDstOptimal
+             && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        sourceStage = vk::PipelineStageFlagBits::eTransfer;
+        destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+    }
+    else
+    {
+        throw std::invalid_argument("Unsupported layout transition");
+    }
+
+    commandBuffer.pipelineBarrier(
+        sourceStage,
+        destinationStage,
+        { },
+        { },
+        { },
+        { barrier }
+    );
+}
+
 inline std::vector<std::uint8_t> ReadFile(const char *filepath)
 {
     std::basic_ifstream<std::uint8_t> file(filepath, std::ios::binary | std::ios::ate);
@@ -89,7 +216,7 @@ inline std::vector<std::uint8_t> ReadFile(const char *filepath)
 }
 
 template<std::size_t N>
-constexpr auto LittleEndianBytesToUint(std::span<const char, N> bytes)
+constexpr auto BytesToUInt(std::span<const std::uint8_t, N> bytes)
 {
     static_assert(N <= sizeof(std::uint64_t), "Integers above 64 bits are unsupported");
 
@@ -122,137 +249,6 @@ constexpr auto LittleEndianBytesToUint(std::span<const char, N> bytes)
     {
         return result;
     }
-}
-
-namespace Tga
-{
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-    struct VULKAN_RENDERER_PACKED ColorMapSpecification
-    {
-        std::uint16_t FirstEntryIndex;
-        std::uint16_t EntryCount;
-        std::uint8_t  ColorDepth;
-    };
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-    static_assert(sizeof(ColorMapSpecification) == 5, "Tga::ColorMapSpecification is not exactly 5 bytes");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-    struct VULKAN_RENDERER_PACKED ImageSpecification
-    {
-        std::uint16_t XOrigin;
-        std::uint16_t YOrigin;
-        std::uint16_t Width;
-        std::uint16_t Height;
-        std::uint8_t  ColorDepth;
-        std::uint8_t  Descriptor;
-    };
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-    static_assert(sizeof(ImageSpecification) == 10, "Tga::ImageSpecification is not exactly 10 bytes");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-    struct VULKAN_RENDERER_PACKED Header
-    {
-        std::uint8_t IdLength;
-        std::uint8_t ColorMapType;
-        std::uint8_t ImageType;
-        Tga::ColorMapSpecification ColorMapSpecification;
-        Tga::ImageSpecification ImageSpecification;
-    };
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-    static_assert(sizeof(Header) == 18, "Tga::Header is not exactly 18 bytes");
-
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-#endif
-    struct VULKAN_RENDERER_PACKED Footer
-    {
-        std::uint32_t ExtensionOffset;
-        std::uint32_t DeveloperOffset;
-        char Signature[16];
-        char Dot;
-        char Null;
-    };
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-
-    struct File
-    {
-        std::vector<char> Pixels;
-        std::uint32_t Width;
-        std::uint32_t Height;
-        std::uint8_t ColorDepth;
-
-        std::size_t GetSize() const
-        {
-            return ((static_cast<std::size_t>(Width) * ColorDepth + 31) / 32) * 4 * Height;
-        }
-
-        static File CreateFrom(std::span<const std::uint8_t> bytes)
-        {
-            static_assert(std::endian::native == std::endian::little, "Big-endian systems are not yet supported");
-
-            if (bytes.size() < sizeof(Tga::Header))
-            {
-                throw std::runtime_error("Too few bytes to be a TGA file");
-            }
-
-            const auto headerBytes = bytes.subspan<0, sizeof(Tga::Header)>();
-            Tga::Header header = { };
-            std::memcpy(&header, headerBytes.data(), sizeof(header));
-
-            if (header.ImageType != 0x02)
-            {
-                throw std::runtime_error("Only uncompressed true-color TGA files are supported");
-            }
-
-            const auto footerBytes = bytes.subspan(bytes.size() - sizeof(Tga::Footer));
-            Tga::Footer footer = { };
-            std::memcpy(&footer, footerBytes.data(), sizeof(footer));
-
-            if (footer.ExtensionOffset != 0 || footer.DeveloperOffset != 0)
-            {
-                throw std::runtime_error("TGA extension area and developer area are not yet supported");
-            }
-
-            const auto &imageSpecification = header.ImageSpecification;
-
-            const std::uint8_t colorDepth = imageSpecification.ColorDepth;
-            if (colorDepth != 32)
-            {
-                throw std::runtime_error("Only 32-bit color depths TGA files are supported");
-            }
-
-            Tga::File file = {
-                .Width       = imageSpecification.Width,
-                .Height      = imageSpecification.Height,
-                .ColorDepth = colorDepth,
-            };
-
-            const std::size_t size = file.GetSize();
-            const auto pixelBytes = bytes.subspan(sizeof(Tga::Header), size);
-            file.Pixels.resize(size);
-            std::memcpy(file.Pixels.data(), pixelBytes.data(), size);
-
-            return file;
-        }
-    };
 }
 
 #endif // !VULKAN_RENDERER_UTILITY_HPP

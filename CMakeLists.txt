@@ -164,6 +164,8 @@ endif()
 add_executable(Renderer
     Source/Main.cpp
     Source/Device.cpp
+    Source/Model.cpp
+    Source/Tga.cpp
     Source/TinyObjLoader.cpp
 )
 
@@ -196,7 +198,7 @@ target_link_libraries(Renderer
         ${CMAKE_DL_LIBS}
         glfw
         glm::glm
-        spdlog::spdlog_header_only
+        spdlog::spdlog # TODO: Figure out why spdlog_header_only causes errors.
         tinyobjloader::tinyobjloader
         Vulkan::Vulkan
 )
