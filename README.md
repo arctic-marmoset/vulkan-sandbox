@@ -6,6 +6,12 @@ foundation. Then, after completing the tutorial, I will modify the code with the
 aim to produce a basic 3D renderer. The scope of the 3D renderer will be decided
 at a later point.
 
+# Development Branches
+
+The main branch may not contain the latest changes, as risky changes are kept in
+separate development branches prior to merging. These branches are named
+`wip/{feature}`.
+
 # External Dependencies
 
 This project uses vcpkg to pull in most dependencies. However, the following must
