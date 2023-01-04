@@ -27,15 +27,15 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
-constexpr std::array<const char *, 1> DeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
 constexpr std::uint32_t WindowWidth = 1280;
 constexpr std::uint32_t WindowHeight = 720;
 
 constexpr std::array<const char *, 1> ValidationLayers = {
     "VK_LAYER_KHRONOS_validation",
+};
+
+constexpr std::array<const char *, 1> DeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 constexpr bool IsDebugMode = true;
