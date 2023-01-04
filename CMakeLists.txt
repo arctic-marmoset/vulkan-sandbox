@@ -148,6 +148,8 @@ add_custom_target(RendererShaders
 
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(tinyobjloader CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 
 # Workaround for older versions of GLM
@@ -161,6 +163,11 @@ endif()
 
 add_executable(Renderer
     Source/Main.cpp
+    Source/Camera.cpp
+    Source/Device.cpp
+    Source/Model.cpp
+    Source/Tga.cpp
+    Source/TinyObjLoader.cpp
 )
 
 target_precompile_headers(Renderer
@@ -192,6 +199,8 @@ target_link_libraries(Renderer
         ${CMAKE_DL_LIBS}
         glfw
         glm::glm
+        spdlog::spdlog # TODO: Figure out why spdlog_header_only causes errors.
+        tinyobjloader::tinyobjloader
         Vulkan::Vulkan
 )
 

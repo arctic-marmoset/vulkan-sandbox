@@ -1,0 +1,10 @@
+"Stanford Dragon PBR" (https://skfb.ly/otyzN) by hackmans is licensed under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/).
+
+Modifications to this model include:
+- Importing into Blender
+- Scaling down to much smaller dimensions
+- Converting to natural Vulkan coordinate system (Z forward, -Y up)
+- Converting winding order to CCW
+- Exporting as Wavefront OBJ
+- Converting albedo texture format from JPEG to TGA

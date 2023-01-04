@@ -15,5 +15,6 @@ Checks: >
     -cppcoreguidelines-pro-bounds-pointer-arithmetic,
     -cppcoreguidelines-pro-type-reinterpret-cast,
 CheckOptions:
-    - { key: hicpp-signed-bitwise.IgnorePositiveIntegerLiterals,                                          value: 1 }
-    - { key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic, value: 1 }
+    - { key: hicpp-signed-bitwise.IgnorePositiveIntegerLiterals,                                          value: 1       }
+    - { key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic, value: 1       }
+    - { key: readability-identifier-length.IgnoredExceptionVariableNames,                                 value: ^[euv]$ }

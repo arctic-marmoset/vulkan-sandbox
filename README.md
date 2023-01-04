@@ -63,7 +63,8 @@ Run/Debug Configurations &rarr; Program arguments.
 
 # Progress Preview
 
-![Depth 2022-04-08](Docs/Images/2022-04-08_depth_trimmed.gif "Depth buffering")
+Multiple meshes and textures:
+![Multiple Meshes and Textures 2023-01-03](Docs/Images/2023-01-03_multiple_meshes_textures.png "Depth buffering")
 
-Reversed depth buffer visualisation:
-![Depth Visualised 2022-04-08](Docs/Images/2022-04-08_depth_visualised.png "Depth buffer visualised")
+Reversed depth buffering:
+![Depth Visualised 2023-01-03](Docs/Images/2023-01-03_multiple_meshes_textures_depth_visualised.png "Depth buffer visualised")
