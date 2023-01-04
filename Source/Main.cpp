@@ -41,34 +41,34 @@ constexpr bool IsDebugMode = true;
 
 constexpr std::array ArenaVertices = {
     // Ground
-    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = {  0.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 10.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 10.0F, 10.0F  } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = {  0.0F, 10.0F  } },
 
     // Front Wall
-    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = {  0.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 10.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = { 10.0F,  1.25F } },
+    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = {  0.0F,  1.25F } },
 
     // Right Wall
-    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F,  10.0F }, .TexCoord = {  0.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 10.0F,  0.0F  } },
+    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = { 10.0F,  1.25F } },
+    Vertex{ .Position = {  10.0F, -0.7F,  10.0F }, .TexCoord = {  0.0F,  1.25F } },
 
     // Back Wall
-    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = {  10.0F,  1.8F, -10.0F }, .TexCoord = {  0.0F,  0.0F  } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 10.0F,  0.0F  } },
+    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 10.0F,  1.25F } },
+    Vertex{ .Position = {  10.0F, -0.7F, -10.0F }, .TexCoord = {  0.0F,  1.25F } },
 
     // Left Wall
-    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 1.0F) } },
-    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = { 1.0F, (1.0F - 0.0F) } },
-    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = { 0.0F, (1.0F - 0.0F) } },
+    Vertex{ .Position = { -10.0F,  1.8F, -10.0F }, .TexCoord = {  0.0F,  0.0F  } },
+    Vertex{ .Position = { -10.0F,  1.8F,  10.0F }, .TexCoord = { 10.0F,  0.0F  } },
+    Vertex{ .Position = { -10.0F, -0.7F,  10.0F }, .TexCoord = { 10.0F,  1.25F } },
+    Vertex{ .Position = { -10.0F, -0.7F, -10.0F }, .TexCoord = {  0.0F,  1.25F } },
 };
 
 constexpr std::array ArenaIndices =
@@ -1120,14 +1120,14 @@ private:
             {
                 constexpr std::size_t vertexDimensionCount = 3;
                 const tinyobj::index_t index = shape.mesh.indices[vertexIndex + indexOffset];
-                const tinyobj::real_t xPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 0];
-                const tinyobj::real_t yPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 1];
-                const tinyobj::real_t zPos = attrib.vertices[vertexDimensionCount * index.vertex_index + 2];
+                const tinyobj::real_t xPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 0];
+                const tinyobj::real_t yPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 1];
+                const tinyobj::real_t zPos = attrib.vertices[vertexDimensionCount * (std::size_t)index.vertex_index + 2];
 
                 assert("Meshes should contain texture coordinate info" && index.texcoord_index >= 0);
                 constexpr std::size_t textureDimensionCount = 2;
-                const tinyobj::real_t u = attrib.texcoords[textureDimensionCount * index.texcoord_index + 0];
-                const tinyobj::real_t v = attrib.texcoords[textureDimensionCount * index.texcoord_index + 1];
+                const tinyobj::real_t u = attrib.texcoords[textureDimensionCount * (std::size_t)index.texcoord_index + 0];
+                const tinyobj::real_t v = attrib.texcoords[textureDimensionCount * (std::size_t)index.texcoord_index + 1];
 
                 const Vertex vertex = {
                     .Position = { xPos, yPos, zPos },
@@ -1369,8 +1369,8 @@ private:
         const vk::PhysicalDeviceProperties properties = m_PhysicalDevice.getProperties();
 
         const vk::SamplerCreateInfo createInfo = {
-            .magFilter               = vk::Filter::eNearest,
-            .minFilter               = vk::Filter::eNearest,
+            .magFilter               = vk::Filter::eLinear,
+            .minFilter               = vk::Filter::eLinear,
             .mipmapMode              = vk::SamplerMipmapMode::eLinear,
             .addressModeU            = vk::SamplerAddressMode::eRepeat,
             .addressModeV            = vk::SamplerAddressMode::eRepeat,
