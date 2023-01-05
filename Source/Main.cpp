@@ -22,8 +22,6 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
-#include <numeric>
-#include <ranges>
 #include <stdexcept>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -35,7 +33,7 @@ constexpr std::array<const char *, 1> ValidationLayers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-constexpr std::array DeviceExtensions = {
+constexpr std::array<const char *, 1> DeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -363,7 +361,7 @@ private:
                     requiredExtensions.push_back(VulkanPortabilitySubsetExtensionName);
                 }
 
-                return { 
+                return {
                     .PhysicalDevice = device,
                     .QueueFamilyIndices = indices,
                     .RequiredExtensions = std::move(requiredExtensions),
@@ -622,21 +620,21 @@ private:
 
     void CreateGraphicsPipeline()
     {
-        const auto vsBytecode = ReadFile(GetResourcePath(TEXTURE_VERT_SHADER_RELATIVE_PATH).c_str());
-        const auto fsBytecode = ReadFile(GetResourcePath(TEXTURE_FRAG_SHADER_RELATIVE_PATH).c_str());
+        const auto modelVsBytecode = ReadFile(GetResourcePath(TEXTURE_VERT_SHADER_RELATIVE_PATH).c_str());
+        const auto modelFsBytecode = ReadFile(GetResourcePath(TEXTURE_FRAG_SHADER_RELATIVE_PATH).c_str());
 
-        const auto vsModule = CreateShaderModule(vsBytecode);
-        const auto fsModule = CreateShaderModule(fsBytecode);
+        const auto modelVsModule = CreateShaderModule(modelVsBytecode);
+        const auto modelFsModule = CreateShaderModule(modelFsBytecode);
 
-        const std::array shaderStages = {
+        std::array shaderStages = {
             vk::PipelineShaderStageCreateInfo{
                 .stage  = vk::ShaderStageFlagBits::eVertex,
-                .module = vsModule,
+                .module = modelVsModule,
                 .pName  = "main",
             },
             vk::PipelineShaderStageCreateInfo{
                 .stage  = vk::ShaderStageFlagBits::eFragment,
-                .module = fsModule,
+                .module = modelFsModule,
                 .pName  = "main",
             },
         };
@@ -679,7 +677,7 @@ private:
         const vk::PipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {
             .depthTestEnable  = VK_TRUE,
             .depthWriteEnable = VK_TRUE,
-            .depthCompareOp   = vk::CompareOp::eGreater,
+            .depthCompareOp   = vk::CompareOp::eGreaterOrEqual,
             .minDepthBounds   = 0.0F,
             .maxDepthBounds   = 1.0F,
         };
@@ -728,17 +726,36 @@ private:
             .subpass             = 0,
         };
 
-        const auto [result, pipeline] = m_Device.GetHandle().createGraphicsPipeline({ }, pipelineCreateInfo);
+        vk::Result result = { };
+
+        std::tie(result, m_ModelPipeline) = m_Device.GetHandle().createGraphicsPipeline({ }, pipelineCreateInfo);
 
         if (result != vk::Result::eSuccess)
         {
-            throw std::runtime_error("Failed to create graphics pipeline");
+            throw std::runtime_error("Failed to create model pipeline");
         }
 
-        m_GraphicsPipeline = pipeline;
+        m_Device.GetHandle().destroy(modelVsModule);
+        m_Device.GetHandle().destroy(modelFsModule);
 
-        m_Device.GetHandle().destroy(vsModule);
-        m_Device.GetHandle().destroy(fsModule);
+        const auto skyboxVsBytecode = ReadFile(GetResourcePath(SKYBOX_VERT_SHADER_RELATIVE_PATH).c_str());
+        const auto skyboxFsBytecode = ReadFile(GetResourcePath(SKYBOX_FRAG_SHADER_RELATIVE_PATH).c_str());
+
+        const auto skyboxVsModule = CreateShaderModule(skyboxVsBytecode);
+        const auto skyboxFsModule = CreateShaderModule(skyboxFsBytecode);
+
+        shaderStages[0].module = skyboxVsModule;
+        shaderStages[1].module = skyboxFsModule;
+
+        std::tie(result, m_SkyboxPipeline) = m_Device.GetHandle().createGraphicsPipeline({ }, pipelineCreateInfo);
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("Failed to create skybox pipeline");
+        }
+
+        m_Device.GetHandle().destroy(skyboxVsModule);
+        m_Device.GetHandle().destroy(skyboxFsModule);
     }
 
     void CreateFramebuffers()
@@ -968,7 +985,7 @@ private:
             GetResourcePath("Textures/StanfordDragon_Albedo_Raw.tga").c_str()
         );
 
-        std::array stagingBuffers = m_DragonModel.Init(
+        std::array dragonStagingBuffers = m_DragonModel.Init(
             m_Device,
             m_SamplerDescriptorSetLayout,
             m_DescriptorPool,
@@ -976,16 +993,75 @@ private:
             loadResourcesCommands
         );
 
+        // Load skybox mesh.
+
+        m_Skybox.Load(
+            GetResourcePath("Meshes/Skybox.obj").c_str(),
+            nullptr
+        );
+
+        std::array skyboxStagingBuffers = m_Skybox.Init(
+            m_Device,
+            nullptr,
+            nullptr,
+            nullptr,
+            loadResourcesCommands
+        );
+
+        // Load skybox texture.
+
+        const std::array<std::string, 6> filepaths = {
+            GetResourcePath("Textures/Sky/Clouds/Clouds_0Back_Raw.tga"),
+            GetResourcePath("Textures/Sky/Clouds/Clouds_1Front_Raw.tga"),
+            GetResourcePath("Textures/Sky/Clouds/Clouds_2Down_Raw.tga"),
+            GetResourcePath("Textures/Sky/Clouds/Clouds_3Up_Raw.tga"),
+            GetResourcePath("Textures/Sky/Clouds/Clouds_4Right_Raw.tga"),
+            GetResourcePath("Textures/Sky/Clouds/Clouds_5Left_Raw.tga"),
+        };
+
+        std::array<const char *, 6> cFilepaths = { };
+        std::ranges::transform(
+            filepaths,
+            cFilepaths.begin(),
+            [](const std::string &path)
+            {
+                return path.c_str();
+            }
+        );
+
+        auto [cubeMapTexture, cubeMapStagingBuffer] = LoadCubeMap(cFilepaths, m_Device, loadResourcesCommands);
+        m_SkyboxTexture = cubeMapTexture;
+
         EndOneTimeCommands(loadResourcesCommands);
 
         missingTextureStagingBuffer.Destroy(m_Device.GetHandle());
         arenaIndicesStagingBuffer.Destroy(m_Device.GetHandle());
         arenaVerticesStagingBuffer.Destroy(m_Device.GetHandle());
 
-        for (Buffer &buffer : stagingBuffers)
+        for (Buffer &buffer : dragonStagingBuffers)
         {
             buffer.Destroy(m_Device.GetHandle());
         }
+
+        for (Buffer &buffer : skyboxStagingBuffers)
+        {
+            buffer.Destroy(m_Device.GetHandle());
+        }
+
+        cubeMapStagingBuffer.Destroy(m_Device.GetHandle());
+
+        m_SkyboxView = m_Device.GetHandle().createImageView(
+            vk::ImageViewCreateInfo()
+                .setImage(m_SkyboxTexture.Handle)
+                .setViewType(vk::ImageViewType::eCube)
+                .setFormat(vk::Format::eB8G8R8A8Srgb)
+                .setSubresourceRange(
+                    vk::ImageSubresourceRange()
+                        .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                        .setLevelCount(1)
+                        .setLayerCount(6)
+                )
+        );
     }
 
     void CreateTextureSampler()
@@ -1018,6 +1094,7 @@ private:
         constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
         m_UniformBuffers.resize(MaxFramesInFlight);
+        m_UniformBuffersMapped.resize(MaxFramesInFlight);
 
         for (std::size_t i = 0; i < MaxFramesInFlight; ++i)
         {
@@ -1026,6 +1103,12 @@ private:
                 vk::BufferUsageFlagBits::eUniformBuffer,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
             );
+
+            m_UniformBuffersMapped[i] = m_Device.GetHandle().mapMemory(m_UniformBuffers[i].Memory, 0, bufferSize);
+            if (!m_UniformBuffersMapped[i])
+            {
+                throw std::runtime_error("Failed to map UBO memory");
+            }
         }
     }
 
@@ -1038,12 +1121,12 @@ private:
             },
             {
                 .type            = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = TextureCount,
+                .descriptorCount = TextureCount + 1, // One more for skybox.
             },
         });
 
         const vk::DescriptorPoolCreateInfo poolInfo = {
-            .maxSets       = MaxFramesInFlight + TextureCount, // One UBO per frame, and one set per texture.
+            .maxSets       = MaxFramesInFlight + TextureCount + 1, // One UBO per frame, one set per texture, one for skybox.
             .poolSizeCount = static_cast<std::uint32_t>(poolSizes.size()),
             .pPoolSizes    = poolSizes.data(),
         };
@@ -1090,23 +1173,41 @@ private:
         };
 
         (void)m_Device.GetHandle().allocateDescriptorSets(&textureAllocInfo, &m_MissingTextureDescriptorSet);
+        (void)m_Device.GetHandle().allocateDescriptorSets(&textureAllocInfo, &m_SkyboxTextureDescriptorSet);
 
-        const vk::DescriptorImageInfo missingTextureImageInfo = {
-            .sampler     = m_TextureSampler,
-            .imageView   = m_MissingTextureImageView,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        const std::array imageInfos = {
+            vk::DescriptorImageInfo{
+                .sampler     = m_TextureSampler,
+                .imageView   = m_MissingTextureImageView,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            },
+            vk::DescriptorImageInfo{
+                .sampler     = m_TextureSampler,
+                .imageView   = m_SkyboxView,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            },
         };
 
-        const vk::WriteDescriptorSet missingTextureDescriptorWrite = {
-            .dstSet          = m_MissingTextureDescriptorSet,
-            .dstBinding      = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
-            .pImageInfo      = &missingTextureImageInfo,
+        const std::array descriptorWrites = {
+            vk::WriteDescriptorSet{
+                .dstSet          = m_MissingTextureDescriptorSet,
+                .dstBinding      = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+                .pImageInfo      = &imageInfos[0],
+            },
+            vk::WriteDescriptorSet{
+                .dstSet          = m_SkyboxTextureDescriptorSet,
+                .dstBinding      = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+                .pImageInfo      = &imageInfos[1],
+            },
         };
 
-        m_Device.GetHandle().updateDescriptorSets({ missingTextureDescriptorWrite }, { });
+        m_Device.GetHandle().updateDescriptorSets(descriptorWrites, { });
     }
 
     void CreateCommandBuffers()
@@ -1165,8 +1266,8 @@ private:
         constexpr std::array darkGrey = { 0.01F, 0.01F, 0.01F, 1.0F };
         constexpr std::array skyBlue = { 0.576F, 0.827F, 0.929F, 1.0F };
         const auto clearValues = std::to_array<vk::ClearValue>({
-            { .color = { skyBlue } },
-            { .depthStencil = { 0.0F, 0 } },
+            { },
+            { },
         });
 
         const vk::Framebuffer framebuffer = m_SwapChainFramebuffers[imageIndex];
@@ -1203,7 +1304,6 @@ private:
 
         commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
         {
-            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline);
             commandBuffer.setViewport(0, 1, &viewport);
             commandBuffer.setScissor(0, 1, &scissor);
 
@@ -1215,6 +1315,9 @@ private:
                 { }
             );
 
+            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_ModelPipeline);
+
+            // TODO: This will eventually become a loop over all models to be drawn.
             commandBuffer.bindDescriptorSets(
                 vk::PipelineBindPoint::eGraphics,
                 m_PipelineLayout,
@@ -1236,6 +1339,18 @@ private:
             commandBuffer.bindVertexBuffers(0, { m_DragonModel.Vertices.Buffer.Handle }, { 0 });
             commandBuffer.bindIndexBuffer(m_DragonModel.Indices.Buffer.Handle, 0, vk::IndexType::eUint32);
             commandBuffer.drawIndexed(m_DragonModel.Indices.Count, 1, 0, 0, 0);
+
+            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_SkyboxPipeline);
+            commandBuffer.bindDescriptorSets(
+                vk::PipelineBindPoint::eGraphics,
+                m_PipelineLayout,
+                1,
+                { m_SkyboxTextureDescriptorSet },
+                { }
+            );
+            commandBuffer.bindVertexBuffers(0, { m_Skybox.Vertices.Buffer.Handle }, { 0 });
+            commandBuffer.bindIndexBuffer(m_Skybox.Indices.Buffer.Handle, 0, vk::IndexType::eUint32);
+            commandBuffer.drawIndexed(m_Skybox.Indices.Count, 1, 0, 0, 0);
         }
         commandBuffer.endRenderPass();
 
@@ -1463,15 +1578,8 @@ private:
             .Proj  = vkm::perspective(glm::radians<float>(80.0F), aspectRatio, 0.01F),
         };
 
-        if (void *const data = m_Device.GetHandle().mapMemory(m_UniformBuffers[currentImage].Memory, 0, sizeof(ubo)))
-        {
-            std::memcpy(data, &ubo, sizeof(ubo));
-            m_Device.GetHandle().unmapMemory(m_UniformBuffers[currentImage].Memory);
-        }
-        else
-        {
-            throw std::runtime_error("Failed to map memory for uniform buffer");
-        }
+        void *destination = m_UniformBuffersMapped[currentImage];
+        std::memcpy(destination, &ubo, sizeof(ubo));
     }
 
     void RecreateSwapChain()
@@ -1523,6 +1631,10 @@ private:
 
         m_Device.GetHandle().destroy(m_TextureSampler);
 
+        m_Device.GetHandle().destroyImageView(m_SkyboxView);
+        m_SkyboxTexture.Destroy(m_Device.GetHandle());
+
+        m_Skybox.Destroy(m_Device.GetHandle());
         m_DragonModel.Destroy(m_Device.GetHandle());
 
         m_Device.GetHandle().destroy(m_MissingTextureImageView);
@@ -1551,7 +1663,8 @@ private:
 
         m_Device.GetHandle().destroy(m_CommandPool);
 
-        m_Device.GetHandle().destroy(m_GraphicsPipeline);
+        m_Device.GetHandle().destroy(m_SkyboxPipeline);
+        m_Device.GetHandle().destroy(m_ModelPipeline);
         m_Device.GetHandle().destroy(m_PipelineLayout);
 
         m_Device.Destroy();
@@ -1670,6 +1783,8 @@ private:
     static constexpr std::size_t FrameTimeSampleCount = 64;
 
     // TODO: This should be determined at runtime.
+    //  Textures should probably all be stored in the same container and referenced by models via their index. The
+    //  application would then be able to determine the total number of textures by the size of the container.
     static constexpr std::size_t TextureCount = 2;
 
 private:
@@ -1701,7 +1816,8 @@ private:
     vk::DescriptorSetLayout m_UboDescriptorSetLayout;
     vk::DescriptorSetLayout m_SamplerDescriptorSetLayout;
     vk::PipelineLayout m_PipelineLayout;
-    vk::Pipeline m_GraphicsPipeline;
+    vk::Pipeline m_ModelPipeline;
+    vk::Pipeline m_SkyboxPipeline;
 
     std::vector<vk::Framebuffer> m_SwapChainFramebuffers;
 
@@ -1719,10 +1835,16 @@ private:
     Image m_MissingTextureImage;
     vk::ImageView m_MissingTextureImageView;
     vk::DescriptorSet m_MissingTextureDescriptorSet;
+    vk::DescriptorSet m_SkyboxTextureDescriptorSet;
 
     Model m_DragonModel;
+    Model m_Skybox;
+
+    Image m_SkyboxTexture;
+    vk::ImageView m_SkyboxView;
 
     std::vector<Buffer> m_UniformBuffers;
+    std::vector<void *> m_UniformBuffersMapped;
     std::vector<vk::DescriptorSet> m_UboDescriptorSets;
 
     std::uint32_t m_CurrentFrameIndex = 0;

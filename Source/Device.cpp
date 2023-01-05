@@ -133,7 +133,70 @@ Image Device::CreateImage(
     vk::MemoryPropertyFlags properties
 ) const
 {
+    return CreateImage(
+        width,
+        height,
+        1,
+        format,
+        tiling,
+        usage,
+        { },
+        properties
+    );
+}
+
+Image Device::CreateCubeMap(
+    std::uint32_t layerWidth,
+    std::uint32_t layerHeight,
+    vk::Format format,
+    vk::ImageTiling tiling,
+    vk::ImageUsageFlags usage,
+    vk::MemoryPropertyFlags properties
+) const
+{
+    return CreateImage(
+        layerWidth,
+        layerHeight,
+        6,
+        format,
+        tiling,
+        usage,
+        vk::ImageCreateFlagBits::eCubeCompatible,
+        properties
+    );
+}
+
+vk::ImageView Device::CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const
+{
+    const vk::ImageViewCreateInfo createInfo = {
+        .image              = image,
+        .viewType           = vk::ImageViewType::e2D,
+        .format             = format,
+        .subresourceRange   = {
+            .aspectMask     = aspectFlags,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+    };
+
+    return m_Device.createImageView(createInfo);
+}
+
+Image Device::CreateImage(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t layerCount,
+    vk::Format format,
+    vk::ImageTiling tiling,
+    vk::ImageUsageFlags usage,
+    vk::ImageCreateFlags flags,
+    vk::MemoryPropertyFlags properties
+) const
+{
     const vk::ImageCreateInfo createInfo = {
+        .flags       = flags,
         .imageType   = vk::ImageType::e2D,
         .format      = format,
         .extent      = {
@@ -142,7 +205,7 @@ Image Device::CreateImage(
             .depth   = 1,
         },
         .mipLevels   = 1,
-        .arrayLayers = 1,
+        .arrayLayers = layerCount,
         .samples     = vk::SampleCountFlagBits::e1,
         .tiling      = tiling,
         .usage       = usage,
@@ -165,24 +228,6 @@ Image Device::CreateImage(
         .Handle = image,
         .Memory = memory,
     };
-}
-
-vk::ImageView Device::CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const
-{
-    const vk::ImageViewCreateInfo createInfo = {
-        .image              = image,
-        .viewType           = vk::ImageViewType::e2D,
-        .format             = format,
-        .subresourceRange   = {
-            .aspectMask     = aspectFlags,
-            .baseMipLevel   = 0,
-            .levelCount     = 1,
-            .baseArrayLayer = 0,
-            .layerCount     = 1,
-        },
-    };
-
-    return m_Device.createImageView(createInfo);
 }
 
 vk::Device CreateDevice(

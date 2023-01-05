@@ -107,6 +107,8 @@ set(SHADER_SOURCES
     Source/Shaders/Triangle.vert
     Source/Shaders/Texture.frag
     Source/Shaders/Texture.vert
+    Source/Shaders/Skybox.frag
+    Source/Shaders/Skybox.vert
 )
 
 foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})

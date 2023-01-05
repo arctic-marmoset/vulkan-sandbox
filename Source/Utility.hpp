@@ -1,6 +1,9 @@
 #ifndef VULKAN_RENDERER_UTILITY_HPP
 #define VULKAN_RENDERER_UTILITY_HPP
 
+#include "Device.hpp"
+#include "Tga.hpp"
+
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 
@@ -133,7 +136,14 @@ inline void TransitionImageLayout(
     vk::CommandBuffer commandBuffer,
     vk::Image image,
     vk::ImageLayout oldLayout,
-    vk::ImageLayout newLayout
+    vk::ImageLayout newLayout,
+    const vk::ImageSubresourceRange &subresourceRange = {
+        .aspectMask      = vk::ImageAspectFlagBits::eColor,
+        .baseMipLevel    = 0,
+        .levelCount      = 1,
+        .baseArrayLayer  = 0,
+        .layerCount      = 1,
+    }
 )
 {
     vk::ImageMemoryBarrier barrier = {
@@ -142,13 +152,7 @@ inline void TransitionImageLayout(
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image               = image,
-        .subresourceRange    = {
-            .aspectMask      = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel    = 0,
-            .levelCount      = 1,
-            .baseArrayLayer  = 0,
-            .layerCount      = 1,
-        },
+        .subresourceRange    = subresourceRange,
     };
 
     vk::PipelineStageFlags sourceStage;
@@ -185,6 +189,104 @@ inline void TransitionImageLayout(
         { },
         { barrier }
     );
+}
+
+inline std::pair<Image, Buffer> LoadCubeMap(
+    const std::array<const char *, 6> &filepaths,
+    const Device &device,
+    vk::CommandBuffer commandBuffer
+)
+{
+    const std::array<Tga::Image, 6> images = {
+        Tga::Image::Load(filepaths[0]),
+        Tga::Image::Load(filepaths[1]),
+        Tga::Image::Load(filepaths[2]),
+        Tga::Image::Load(filepaths[3]),
+        Tga::Image::Load(filepaths[4]),
+        Tga::Image::Load(filepaths[5]),
+    };
+
+    // TODO: Make sure dimensions are all the same.
+
+    const vk::DeviceSize layerSize = images[0].GetSize();
+    const vk::DeviceSize cubeMapSize = layerSize * 6;
+
+    const Buffer stagingBuffer = device.CreateBuffer(
+        cubeMapSize,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+    );
+
+    WithMappedMemory(device.GetHandle(), stagingBuffer.Memory, 0, cubeMapSize, [&](void *memory)
+    {
+        char *destination = static_cast<char *>(memory);
+
+        for (const Tga::Image &image : images)
+        {
+            std::memcpy(destination, image.Pixels.data(), layerSize);
+            destination += layerSize;
+        }
+    });
+
+    const std::uint32_t layerWidth = images[0].Width;
+    const std::uint32_t layerHeight = images[0].Height;
+
+    const Image image = device.CreateCubeMap(
+        layerWidth,
+        layerHeight,
+        vk::Format::eB8G8R8A8Srgb,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+        vk::MemoryPropertyFlagBits::eDeviceLocal
+    );
+
+    // TODO: Handle multiple mip levels.
+    std::array<vk::BufferImageCopy, 6> copyRegions;
+    for (std::uint32_t face = 0; face < 6; ++face)
+    {
+        const std::size_t offset = face * layerSize;
+
+        copyRegions[face] = vk::BufferImageCopy()
+            .setBufferOffset(offset)
+            .setImageSubresource(
+                vk::ImageSubresourceLayers()
+                    .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                    .setMipLevel(0)
+                    .setBaseArrayLayer(face)
+                    .setLayerCount(1)
+            )
+            .setImageExtent({ layerWidth, layerHeight, 1 });
+    }
+
+    constexpr auto imageSubresourceRange = vk::ImageSubresourceRange()
+        .setAspectMask(vk::ImageAspectFlagBits::eColor)
+        .setLevelCount(1)
+        .setLayerCount(6);
+
+    TransitionImageLayout(
+        commandBuffer,
+        image.Handle,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eTransferDstOptimal,
+        imageSubresourceRange
+    );
+
+    commandBuffer.copyBufferToImage(
+        stagingBuffer.Handle,
+        image.Handle,
+        vk::ImageLayout::eTransferDstOptimal,
+        copyRegions
+    );
+
+    TransitionImageLayout(
+        commandBuffer,
+        image.Handle,
+        vk::ImageLayout::eTransferDstOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        imageSubresourceRange
+    );
+
+    return { image, stagingBuffer };
 }
 
 inline std::vector<std::uint8_t> ReadFile(const char *filepath)
