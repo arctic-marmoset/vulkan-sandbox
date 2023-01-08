@@ -20,29 +20,26 @@ struct Vertex
 
     static constexpr vk::VertexInputBindingDescription GetBindingDescription()
     {
-        return {
-            .binding   = 0,
-            .stride    = sizeof(Vertex),
-            .inputRate = vk::VertexInputRate::eVertex,
-        };
+        return vk::VertexInputBindingDescription()
+            .setBinding(0)
+            .setStride(sizeof(Vertex))
+            .setInputRate(vk::VertexInputRate::eVertex);
     }
 
     static constexpr auto GetAttributeDescriptions()
     {
-        return std::to_array<vk::VertexInputAttributeDescription>({
-            {
-                .location = 0,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32B32Sfloat,
-                .offset   = offsetof(Vertex, Position),
-            },
-            {
-                .location = 1,
-                .binding  = 0,
-                .format   = vk::Format::eR32G32Sfloat,
-                .offset   = offsetof(Vertex, TexCoord),
-            },
-        });
+        return std::array {
+            vk::VertexInputAttributeDescription()
+                .setLocation(0)
+                .setBinding(0)
+                .setFormat(vk::Format::eR32G32B32Sfloat)
+                .setOffset(offsetof(Vertex, Position)),
+            vk::VertexInputAttributeDescription()
+                .setLocation(1)
+                .setBinding(0)
+                .setFormat(vk::Format::eR32G32Sfloat)
+                .setOffset(offsetof(Vertex, TexCoord)),
+        };
     }
 };
 

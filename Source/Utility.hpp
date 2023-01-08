@@ -90,12 +90,7 @@ void WithMappedMemory(
 
 inline void CopyBuffer(vk::CommandBuffer commandBuffer, vk::Buffer source, vk::Buffer destination, vk::DeviceSize size)
 {
-    const vk::BufferCopy copyRegion = {
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size      = size,
-    };
-
+    const auto copyRegion = vk::BufferCopy(0, 0, size);
     commandBuffer.copyBuffer(source, destination, copyRegion);
 }
 
@@ -107,27 +102,13 @@ inline void CopyBufferToImage(
     uint32_t height
 )
 {
-    const vk::BufferImageCopy region = {
-        .bufferOffset       = 0,
-        .bufferRowLength    = 0,
-        .bufferImageHeight  = 0,
-        .imageSubresource   = {
-            .aspectMask     = vk::ImageAspectFlagBits::eColor,
-            .mipLevel       = 0,
-            .baseArrayLayer = 0,
-            .layerCount     = 1,
-        },
-        .imageOffset        = {
-            .x              = 0,
-            .y              = 0,
-            .z              = 0,
-        },
-        .imageExtent        = {
-            .width          = width,
-            .height         = height,
-            .depth          = 1,
-        },
-    };
+    const auto region = vk::BufferImageCopy()
+        .setImageSubresource(
+            vk::ImageSubresourceLayers()
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setLayerCount(1)
+        )
+        .setImageExtent(vk::Extent3D(width, height, 1));
 
     commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, { region });
 }
@@ -137,23 +118,19 @@ inline void TransitionImageLayout(
     vk::Image image,
     vk::ImageLayout oldLayout,
     vk::ImageLayout newLayout,
-    const vk::ImageSubresourceRange &subresourceRange = {
-        .aspectMask      = vk::ImageAspectFlagBits::eColor,
-        .baseMipLevel    = 0,
-        .levelCount      = 1,
-        .baseArrayLayer  = 0,
-        .layerCount      = 1,
-    }
+    const vk::ImageSubresourceRange &subresourceRange = vk::ImageSubresourceRange()
+        .setAspectMask(vk::ImageAspectFlagBits::eColor)
+        .setLevelCount(1)
+        .setLayerCount(1)
 )
 {
-    vk::ImageMemoryBarrier barrier = {
-        .oldLayout           = oldLayout,
-        .newLayout           = newLayout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image               = image,
-        .subresourceRange    = subresourceRange,
-    };
+    auto barrier = vk::ImageMemoryBarrier()
+        .setOldLayout(oldLayout)
+        .setNewLayout(newLayout)
+        .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+        .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+        .setImage(image)
+        .setSubresourceRange(subresourceRange);
 
     vk::PipelineStageFlags sourceStage;
     vk::PipelineStageFlags destinationStage;

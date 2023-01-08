@@ -187,20 +187,20 @@ std::array<Buffer, 3> Model::Init(
 
         (void)device.GetHandle().allocateDescriptorSets(&textureAllocInfo, &Texture.DescriptorSet);
 
-        const vk::DescriptorImageInfo textureImageInfo = {
-            .sampler     = textureSampler,
-            .imageView   = Texture.View,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        const std::array textureImageInfo = {
+            vk::DescriptorImageInfo()
+                .setSampler(textureSampler)
+                .setImageView(Texture.View)
+                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal),
         };
 
-        const vk::WriteDescriptorSet textureDescriptorWrite = {
-            .dstSet          = Texture.DescriptorSet,
-            .dstBinding      = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
-            .pImageInfo      = &textureImageInfo,
-        };
+        const auto textureDescriptorWrite = vk::WriteDescriptorSet()
+            .setDstSet(Texture.DescriptorSet)
+            .setDstBinding(0)
+            .setDstArrayElement(0)
+            .setDescriptorCount(1)
+            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+            .setImageInfo(textureImageInfo);
 
         device.GetHandle().updateDescriptorSets({ textureDescriptorWrite }, { });
     }
