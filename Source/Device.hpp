@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <set>
 #include <span>
 
@@ -73,11 +74,14 @@ public:
         std::set<std::uint32_t> ToUnique() const;
     };
 
-    void Init(
-        vk::PhysicalDevice physicalDevice,
-        QueueFamilyIndices queueFamilyIndices,
-        std::span<const char *const> requiredExtensions
-    );
+    struct InitInfo
+    {
+        vk::PhysicalDevice PhysicalDevice;
+        QueueFamilyIndices QueueFamilyIndices;
+        std::vector<const char *> RequiredExtensions;
+    };
+
+    void Init(const InitInfo &info);
 
     void Destroy();
 

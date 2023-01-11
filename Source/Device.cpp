@@ -1,6 +1,7 @@
 #include "Device.hpp"
 
 #include <bitset>
+#include <ranges>
 
 static vk::Device CreateDevice(
     vk::PhysicalDevice physicalDevice,
@@ -49,19 +50,15 @@ Device::QueueFamilyIndices Device::QueueFamilyIndices::Find(vk::PhysicalDevice p
     return indices;
 }
 
-void Device::Init(
-    vk::PhysicalDevice physicalDevice,
-    Device::QueueFamilyIndices queueFamilyIndices,
-    std::span<const char *const> requiredExtensions
-)
+void Device::Init(const InitInfo &info)
 {
-    m_PhysicalDevice = physicalDevice;
+    m_PhysicalDevice = info.PhysicalDevice;
     m_Properties = m_PhysicalDevice.getProperties();
     m_MemoryProperties = m_PhysicalDevice.getMemoryProperties();
-    m_QueueFamilyIndices = queueFamilyIndices;
+    m_QueueFamilyIndices = info.QueueFamilyIndices;
     m_UniqueQueueFamilyIndices = m_QueueFamilyIndices.ToUnique();
 
-    m_Device = CreateDevice(physicalDevice, m_UniqueQueueFamilyIndices, requiredExtensions);
+    m_Device = CreateDevice(m_PhysicalDevice, m_UniqueQueueFamilyIndices, info.RequiredExtensions);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
     m_GraphicsQueue = m_Device.getQueue(m_QueueFamilyIndices.Graphics, 0);
     m_PresentQueue = m_Device.getQueue(m_QueueFamilyIndices.Present, 0);

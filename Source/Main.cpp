@@ -23,7 +23,9 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <ranges>
 #include <stdexcept>
+#include <vulkan/vulkan_structs.hpp>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -34,9 +36,11 @@ constexpr std::array<const char *, 1> ValidationLayers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-constexpr std::array<const char *, 1> DeviceExtensions = {
+constexpr std::array DeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
+
+constexpr const char *VulkanPortabilitySubsetExtensionName = "VK_KHR_portability_subset";
 
 constexpr bool IsDebugMode = true;
 
@@ -120,13 +124,10 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanDebugMessengerCallback(
     return VK_FALSE;
 }
 
-bool IsValidationLayersSupported()
+bool IsValidationLayersSupported(std::span<const vk::LayerProperties> instanceLayers)
 {
-    auto layers = vk::enumerateInstanceLayerProperties();
-    std::ranges::sort(layers, { }, &vk::LayerProperties::layerName);
-
     return std::ranges::includes(
-        layers,
+        instanceLayers,
         ValidationLayers,
         { },
         [](const vk::LayerProperties &properties)
@@ -225,8 +226,8 @@ private:
         CreateInstance();
         AttachDebugMessenger();
         CreateSurface();
-        const auto [physicalDevice, queueFamilyIndices] = SelectPhysicalDevice(m_Instance);
-        m_Device.Init(physicalDevice, queueFamilyIndices, DeviceExtensions);
+        const Device::InitInfo deviceInfo = SelectPhysicalDevice(m_Instance);
+        m_Device.Init(deviceInfo);
         CreateSwapChain();
         CreateImageViews();
         CreateRenderPass();
@@ -249,9 +250,12 @@ private:
         auto *vkGetInstanceProcAddr = m_Loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
+        auto instanceLayers = vk::enumerateInstanceLayerProperties();
+        std::ranges::sort(instanceLayers, { }, &vk::LayerProperties::layerName);
+
         if constexpr (IsDebugMode)
         {
-            if (!IsValidationLayersSupported())
+            if (!IsValidationLayersSupported(instanceLayers))
             {
                 throw std::runtime_error("Validation layers requested but not supported");
             }
@@ -265,9 +269,18 @@ private:
         auto &createInfo = chain.get<vk::InstanceCreateInfo>();
         auto &debugCreateInfo = chain.get<vk::DebugUtilsMessengerCreateInfoEXT>();
 
-        const auto extensions = GetRequiredExtensions();
+        vk::InstanceCreateFlags instanceFlags = { };
+        auto extensions = GetRequiredExtensions();
+
+        // VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME does not seem to show up in instanceLayers.
+#if defined(__APPLE__)
+        instanceFlags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
 
         createInfo = {
+            .flags                   = instanceFlags,
             .pApplicationInfo        = &appInfo,
             .enabledExtensionCount   = static_cast<std::uint32_t>(extensions.size()),
             .ppEnabledExtensionNames = extensions.data(),
@@ -311,7 +324,7 @@ private:
     }
 
     [[nodiscard]]
-    std::pair<vk::PhysicalDevice, Device::QueueFamilyIndices> SelectPhysicalDevice(vk::Instance instance)
+    Device::InitInfo SelectPhysicalDevice(vk::Instance instance)
     {
         const auto devices = instance.enumeratePhysicalDevices();
 
@@ -320,22 +333,45 @@ private:
             throw std::runtime_error("Failed to find a GPU with Vulkan support");
         }
 
-        Device::QueueFamilyIndices indices;
-        SwapChainSupportDetails details;
         for (const vk::PhysicalDevice &device : devices)
         {
-            indices = Device::QueueFamilyIndices::Find(device, m_Surface);
-            details = QuerySwapChainSupport(device, m_Surface);
+            const Device::QueueFamilyIndices indices = Device::QueueFamilyIndices::Find(device, m_Surface);
+            const SwapChainSupportDetails details = QuerySwapChainSupport(device, m_Surface);
 
-            if (IsRequiredExtensionsSupported(device)
+            auto deviceExtensions = device.enumerateDeviceExtensionProperties();
+            std::ranges::sort(deviceExtensions, { }, &vk::ExtensionProperties::extensionName);
+
+            if (IsRequiredExtensionsSupported(deviceExtensions)
                 && indices.IsComplete()
                 && (!details.Formats.empty() && !details.PresentModes.empty()))
             {
-                return { device, indices };
+                std::vector requiredExtensions(DeviceExtensions.begin(), DeviceExtensions.end());
+
+                if (IsPortabilitySubsetRequired(deviceExtensions))
+                {
+                    requiredExtensions.push_back(VulkanPortabilitySubsetExtensionName);
+                }
+
+                return { 
+                    .PhysicalDevice = device,
+                    .QueueFamilyIndices = indices,
+                    .RequiredExtensions = std::move(requiredExtensions),
+                };
             }
         }
 
         throw std::runtime_error("Failed to find a GPU suitable for this application");
+    }
+
+    bool IsPortabilitySubsetRequired(std::span<const vk::ExtensionProperties> deviceExtensions)
+    {
+        return std::ranges::find_if(
+            deviceExtensions,
+            [](const vk::ExtensionProperties &properties)
+            {
+            return properties.extensionName == std::string_view(VulkanPortabilitySubsetExtensionName);
+            }
+        ) != deviceExtensions.end();
     }
 
     [[nodiscard]]
@@ -1572,13 +1608,10 @@ private:
         }
     }
 
-    static bool IsRequiredExtensionsSupported(const vk::PhysicalDevice &device)
+    static bool IsRequiredExtensionsSupported(std::span<const vk::ExtensionProperties> deviceExtensions)
     {
-        auto extensions = device.enumerateDeviceExtensionProperties();
-        std::ranges::sort(extensions, { }, &vk::ExtensionProperties::extensionName);
-
         return std::ranges::includes(
-            extensions,
+            deviceExtensions,
             DeviceExtensions,
             { },
             [](const vk::ExtensionProperties &extension)

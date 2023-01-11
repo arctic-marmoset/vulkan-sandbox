@@ -189,7 +189,7 @@ inline void TransitionImageLayout(
 
 inline std::vector<std::uint8_t> ReadFile(const char *filepath)
 {
-    std::basic_ifstream<std::uint8_t> file(filepath, std::ios::binary | std::ios::ate);
+    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
 
     if (!file)
     {
@@ -210,7 +210,7 @@ inline std::vector<std::uint8_t> ReadFile(const char *filepath)
     }
 
     buffer.resize(size);
-    file.read(buffer.data(), static_cast<std::streamsize>(size));
+    file.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(size));
 
     return buffer;
 }
