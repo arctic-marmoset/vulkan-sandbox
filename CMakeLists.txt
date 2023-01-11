@@ -94,9 +94,13 @@ if(RENDERER_USE_EXTENSIVE_WARNINGS)
     endif()
 endif()
 
-set(RESOURCES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(tinyobjloader CONFIG REQUIRED)
+find_package(Vulkan REQUIRED)
 
-find_program(GLSL_VALIDATOR glslc REQUIRED)
+set(RESOURCES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 
 set(SHADER_SOURCES
     Source/Shaders/Triangle.frag
@@ -128,7 +132,7 @@ foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
     add_custom_command(
         OUTPUT ${OUTPUT_FILE_PATH}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-        COMMAND ${GLSL_VALIDATOR} ${SOURCE_PATH} -g -o ${OUTPUT_FILE_PATH}
+        COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SOURCE_PATH} -g -o ${OUTPUT_FILE_PATH}
         DEPENDS ${SOURCE_PATH}
         VERBATIM
     )
@@ -145,12 +149,6 @@ endforeach()
 add_custom_target(RendererShaders
     DEPENDS ${SPIRV_BYTECODE}
 )
-
-find_package(glfw3 CONFIG REQUIRED)
-find_package(glm CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
-find_package(tinyobjloader CONFIG REQUIRED)
-find_package(Vulkan REQUIRED)
 
 # Workaround for older versions of GLM
 if(NOT TARGET glm::glm)
