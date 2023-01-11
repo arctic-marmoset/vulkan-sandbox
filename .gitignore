@@ -9,6 +9,7 @@ cmake-build-*/
 .cache/
 .idea/
 .vs/
+.vscode/
 
 **/.DS_Store
 compile_commands.json
