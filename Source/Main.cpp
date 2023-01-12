@@ -270,20 +270,21 @@ private:
         auto &debugCreateInfo = chain.get<vk::DebugUtilsMessengerCreateInfoEXT>();
 
         vk::InstanceCreateFlags instanceFlags = { };
-        auto extensions = GetRequiredExtensions();
-
-        // VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME does not seem to show up in instanceLayers.
-#if defined(__APPLE__)
-        instanceFlags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
-        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-        extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-#endif
+        auto requiredExtensions = GetRequiredExtensions();
+        auto instanceExtensions = vk::enumerateInstanceExtensionProperties();
+        std::ranges::sort(instanceExtensions, { }, &vk::ExtensionProperties::extensionName);
+        if (IsPortabilityEnumerationRequired(instanceExtensions))
+        {
+            instanceFlags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+            requiredExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            requiredExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+        }
 
         createInfo = {
             .flags                   = instanceFlags,
             .pApplicationInfo        = &appInfo,
-            .enabledExtensionCount   = static_cast<std::uint32_t>(extensions.size()),
-            .ppEnabledExtensionNames = extensions.data(),
+            .enabledExtensionCount   = static_cast<std::uint32_t>(requiredExtensions.size()),
+            .ppEnabledExtensionNames = requiredExtensions.data(),
         };
 
         if constexpr (IsDebugMode)
@@ -299,6 +300,17 @@ private:
 
         m_Instance = vk::createInstance(createInfo);
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
+    }
+
+    static bool IsPortabilityEnumerationRequired(std::span<const vk::ExtensionProperties> instanceExtensions)
+    {
+        return std::ranges::find_if(
+            instanceExtensions,
+            [](const vk::ExtensionProperties &properties)
+            {
+                return properties.extensionName == std::string_view(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            }
+        ) != instanceExtensions.end();
     }
 
     void AttachDebugMessenger()
