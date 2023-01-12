@@ -171,9 +171,32 @@ public:
         vk::DynamicState::eViewport,
     };
 
-    void SetResourcesPath(const char *path)
+    void ParseCommandLineArguments(int argc, char *argv[])
     {
-        m_ResourcesPath = path;
+        constexpr std::string_view ResourcesPathFlag = "--resources-path";
+        constexpr char FlagDelimiter = '=';
+
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string_view arg = argv[i];
+            if (!arg.starts_with(ResourcesPathFlag))
+            {
+                std::fprintf(stderr, "Unrecognised argument: %s - ignoring\n", arg.data());
+                continue;
+            }
+
+            const std::size_t delimiterIndex = arg.find(FlagDelimiter);
+            std::string_view path;
+            if (delimiterIndex == std::string_view::npos
+                || (path = arg.substr(delimiterIndex + 1)).empty())
+            {
+                std::fprintf(stderr,"\"%s\" was specified, but no value was given\n", ResourcesPathFlag.data());
+                std::fprintf(stderr, "Usage: %s%c{ABSOLUTE_PATH_TO_DIR}\n", ResourcesPathFlag.data(), FlagDelimiter);
+                continue;
+            }
+
+            m_ResourcesPath = path;
+        }
     }
 
     void Run()
@@ -1220,8 +1243,6 @@ private:
         const vk::CommandBufferBeginInfo beginInfo = { };
         commandBuffer.begin(beginInfo);
 
-        constexpr std::array darkGrey = { 0.01F, 0.01F, 0.01F, 1.0F };
-        constexpr std::array skyBlue = { 0.576F, 0.827F, 0.929F, 1.0F };
         const std::array clearValues = {
             vk::ClearValue(),
             vk::ClearValue(),
@@ -1813,50 +1834,23 @@ private:
     std::array<char, MaxTitleLength> m_Title = { };
 };
 
-constexpr std::string_view ResourcesPathFlag = "--resources-path";
-constexpr char FlagDelimiter = '=';
-
 int main(int argc, char *argv[])
 {
-    --argc;
-    ++argv;
-
-    Application app;
-
-    for (int i = 0; i < argc; ++i)
-    {
-        const std::string_view arg = argv[i];
-        if (arg.starts_with(ResourcesPathFlag))
-        {
-            if (const std::size_t delimiterIndex = arg.find(FlagDelimiter); delimiterIndex != std::string_view::npos)
-            {
-                if (const std::string_view path = arg.substr(delimiterIndex + 1); !path.empty())
-                {
-                    app.SetResourcesPath(path.data());
-                }
-            }
-            else
-            {
-                std::printf("\"%s\" was specified, but no value was given\n", ResourcesPathFlag.data());
-                std::fprintf(stderr, "Usage: %s%c{ABSOLUTE_PATH_TO_DIR}\n", ResourcesPathFlag.data(), FlagDelimiter);
-                return EXIT_FAILURE;
-            }
-        }
-        else
-        {
-            std::fprintf(stderr, "Unrecognised argument: %s - ignoring", arg.data());
-        }
-    }
-
     try
     {
+        Application app;
+        app.ParseCommandLineArguments(argc, argv);
         app.Run();
+        return EXIT_SUCCESS;
     }
     catch (const std::exception &e)
     {
-        spdlog::error("Fatal error: {}", e.what());
+        spdlog::critical("{}", e.what());
         return EXIT_FAILURE;
     }
-
-    return EXIT_SUCCESS;
+    catch (...)
+    {
+        spdlog::critical("An unknown exception was thrown");
+        return EXIT_FAILURE;
+    }
 }
