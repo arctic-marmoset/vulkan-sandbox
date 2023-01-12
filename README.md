@@ -63,8 +63,8 @@ Run/Debug Configurations &rarr; Program arguments.
 
 # Progress Preview
 
-Multiple meshes and textures:
-![Multiple Meshes and Textures 2023-01-03](Docs/Images/2023-01-03_multiple_meshes_textures.png "Depth buffering")
+Multiple meshes and textures, skybox cube map:
+![Skybox 2023-01-04](Docs/Images/2023-01-04_skybox.png "Skybox")
 
 Reversed depth buffering:
 ![Depth Visualised 2023-01-03](Docs/Images/2023-01-03_multiple_meshes_textures_depth_visualised.png "Depth buffer visualised")

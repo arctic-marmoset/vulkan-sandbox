@@ -27,7 +27,7 @@ Device::QueueFamilyIndices Device::QueueFamilyIndices::Find(vk::PhysicalDevice p
 
     for (std::uint32_t i = 0; i < queueFamiliesProperties.size(); ++i)
     {
-        const auto &queueFamilyProperties = queueFamiliesProperties[i];
+        const vk::QueueFamilyProperties &queueFamilyProperties = queueFamiliesProperties[i];
 
         if (queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
         {
@@ -71,7 +71,7 @@ void Device::Destroy()
 
 std::uint32_t Device::FindMemoryType(std::uint32_t typeBits, vk::MemoryPropertyFlags properties) const
 {
-    constexpr auto typeBitCount = std::numeric_limits<decltype(typeBits)>::digits;
+    constexpr std::uint32_t typeBitCount = std::numeric_limits<decltype(typeBits)>::digits;
     const std::bitset<typeBitCount> types(typeBits);
 
     const auto isTypeAcceptable = [&types](std::uint32_t index)
@@ -86,7 +86,7 @@ std::uint32_t Device::FindMemoryType(std::uint32_t typeBits, vk::MemoryPropertyF
 
     for (std::uint32_t i = 0; i < m_MemoryProperties.memoryTypeCount; ++i)
     {
-        const auto &candidateType = m_MemoryProperties.memoryTypes[i];
+        const vk::MemoryType &candidateType = m_MemoryProperties.memoryTypes[i];
         if (isTypeAcceptable(i)
             && arePropertiesPresent(candidateType))
         {
@@ -99,21 +99,19 @@ std::uint32_t Device::FindMemoryType(std::uint32_t typeBits, vk::MemoryPropertyF
 
 Buffer Device::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) const
 {
-    const vk::BufferCreateInfo bufferInfo = {
-        .size        = size,
-        .usage       = usage,
-        .sharingMode = vk::SharingMode::eExclusive,
-    };
+    const auto bufferInfo = vk::BufferCreateInfo()
+        .setSize(size)
+        .setUsage(usage)
+        .setSharingMode(vk::SharingMode::eExclusive);
 
     const vk::Buffer buffer = m_Device.createBuffer(bufferInfo);
 
     const vk::MemoryRequirements memoryRequirements = m_Device.getBufferMemoryRequirements(buffer);
     const std::uint32_t memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties);
 
-    const vk::MemoryAllocateInfo allocateInfo = {
-        .allocationSize  = memoryRequirements.size,
-        .memoryTypeIndex = memoryTypeIndex,
-    };
+    const auto allocateInfo = vk::MemoryAllocateInfo()
+        .setAllocationSize(memoryRequirements.size)
+        .setMemoryTypeIndex(memoryTypeIndex);
 
     const vk::DeviceMemory memory = m_Device.allocateMemory(allocateInfo);
     m_Device.bindBufferMemory(buffer, memory, 0);
@@ -133,30 +131,87 @@ Image Device::CreateImage(
     vk::MemoryPropertyFlags properties
 ) const
 {
-    const vk::ImageCreateInfo createInfo = {
-        .imageType   = vk::ImageType::e2D,
-        .format      = format,
-        .extent      = {
-            .width   = width,
-            .height  = height,
-            .depth   = 1,
-        },
-        .mipLevels   = 1,
-        .arrayLayers = 1,
-        .samples     = vk::SampleCountFlagBits::e1,
-        .tiling      = tiling,
-        .usage       = usage,
-        .sharingMode = vk::SharingMode::eExclusive,
-    };
+    return CreateImage(
+        width,
+        height,
+        1,
+        format,
+        tiling,
+        usage,
+        { },
+        properties
+    );
+}
+
+Image Device::CreateCubeMap(
+    std::uint32_t layerWidth,
+    std::uint32_t layerHeight,
+    vk::Format format,
+    vk::ImageTiling tiling,
+    vk::ImageUsageFlags usage,
+    vk::MemoryPropertyFlags properties
+) const
+{
+    return CreateImage(
+        layerWidth,
+        layerHeight,
+        6,
+        format,
+        tiling,
+        usage,
+        vk::ImageCreateFlagBits::eCubeCompatible,
+        properties
+    );
+}
+
+vk::ImageView Device::CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const
+{
+    const auto createInfo = vk::ImageViewCreateInfo()
+        .setImage(image)
+        .setViewType(vk::ImageViewType::e2D)
+        .setFormat(format)
+        .setSubresourceRange(
+            vk::ImageSubresourceRange()
+                .setAspectMask(aspectFlags)
+                .setBaseMipLevel(0)
+                .setLevelCount(1)
+                .setBaseArrayLayer(0)
+                .setLayerCount(1)
+        );
+
+    return m_Device.createImageView(createInfo);
+}
+
+Image Device::CreateImage(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t layerCount,
+    vk::Format format,
+    vk::ImageTiling tiling,
+    vk::ImageUsageFlags usage,
+    vk::ImageCreateFlags flags,
+    vk::MemoryPropertyFlags properties
+) const
+{
+    const auto createInfo = vk::ImageCreateInfo()
+        .setFlags(flags)
+        .setImageType(vk::ImageType::e2D)
+        .setFormat(format)
+        .setExtent(vk::Extent3D(width, height, 1))
+        .setMipLevels(1)
+        .setArrayLayers(layerCount)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setTiling(tiling)
+        .setUsage(usage)
+        .setSharingMode(vk::SharingMode::eExclusive);
 
     const vk::Image image = m_Device.createImage(createInfo);
 
     const vk::MemoryRequirements memoryRequirements = m_Device.getImageMemoryRequirements(image);
 
-    const vk::MemoryAllocateInfo allocInfo = {
-        .allocationSize = memoryRequirements.size,
-        .memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, properties),
-    };
+    const auto allocInfo = vk::MemoryAllocateInfo()
+        .setAllocationSize(memoryRequirements.size)
+        .setMemoryTypeIndex(FindMemoryType(memoryRequirements.memoryTypeBits, properties));
 
     const vk::DeviceMemory memory = m_Device.allocateMemory(allocInfo);
     m_Device.bindImageMemory(image, memory, 0);
@@ -165,24 +220,6 @@ Image Device::CreateImage(
         .Handle = image,
         .Memory = memory,
     };
-}
-
-vk::ImageView Device::CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const
-{
-    const vk::ImageViewCreateInfo createInfo = {
-        .image              = image,
-        .viewType           = vk::ImageViewType::e2D,
-        .format             = format,
-        .subresourceRange   = {
-            .aspectMask     = aspectFlags,
-            .baseMipLevel   = 0,
-            .levelCount     = 1,
-            .baseArrayLayer = 0,
-            .layerCount     = 1,
-        },
-    };
-
-    return m_Device.createImageView(createInfo);
 }
 
 vk::Device CreateDevice(
@@ -200,15 +237,13 @@ vk::Device CreateDevice(
         [&queuePriorities](std::uint32_t index)
         {
             return vk::DeviceQueueCreateInfo()
-                .setQueueCount(queuePriorities.size())
                 .setQueuePriorities(queuePriorities)
                 .setQueueFamilyIndex(index);
         }
     );
 
-    const vk::PhysicalDeviceFeatures features = {
-        .samplerAnisotropy = VK_TRUE,
-    };
+    const auto features = vk::PhysicalDeviceFeatures()
+        .setSamplerAnisotropy(VK_TRUE);
 
     const auto info = vk::DeviceCreateInfo()
         .setQueueCreateInfos(queueCreateInfos)

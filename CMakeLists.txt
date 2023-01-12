@@ -107,6 +107,8 @@ set(SHADER_SOURCES
     Source/Shaders/Triangle.vert
     Source/Shaders/Texture.frag
     Source/Shaders/Texture.vert
+    Source/Shaders/Skybox.frag
+    Source/Shaders/Skybox.vert
 )
 
 foreach(RELATIVE_SOURCE_PATH ${SHADER_SOURCES})
@@ -188,7 +190,6 @@ target_compile_definitions(Renderer
         GLM_FORCE_DEPTH_ZERO_TO_ONE
         GLM_FORCE_RADIANS
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
-        VULKAN_HPP_NO_CONSTRUCTORS
         ${RENDERER_SHADER_BYTECODE_PATH_DEFINES}
 )
 

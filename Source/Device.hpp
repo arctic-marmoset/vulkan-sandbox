@@ -49,17 +49,14 @@ public:
 
         static constexpr auto InvalidIndex = static_cast<std::uint32_t>(-1);
 
-        [[nodiscard]]
         static QueueFamilyIndices Find(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface);
 
-        [[nodiscard]]
         constexpr bool IsComplete() const
         {
             return Graphics != InvalidIndex
                    && Present != InvalidIndex;
         }
 
-        [[nodiscard]]
         constexpr std::array<std::uint32_t, 2> ToArray() const
         {
             assert("ToArray requires all indices to be valid" && IsComplete());
@@ -70,7 +67,6 @@ public:
             };
         }
 
-        [[nodiscard]]
         std::set<std::uint32_t> ToUnique() const;
     };
 
@@ -85,7 +81,6 @@ public:
 
     void Destroy();
 
-    [[nodiscard]]
     std::uint32_t FindMemoryType(std::uint32_t typeBits, vk::MemoryPropertyFlags properties) const;
 
     [[nodiscard]]
@@ -101,57 +96,71 @@ public:
         vk::MemoryPropertyFlags properties
     ) const;
 
+    [[nodiscard]]
+    Image CreateCubeMap(
+        std::uint32_t layerWidth,
+        std::uint32_t layerHeight,
+        vk::Format format,
+        vk::ImageTiling tiling,
+        vk::ImageUsageFlags usage,
+        vk::MemoryPropertyFlags properties
+    ) const;
 
     [[nodiscard]]
     vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) const;
 
-    [[nodiscard]]
     vk::PhysicalDevice GetPhysicalDevice() const
     {
         return m_PhysicalDevice;
     }
 
-    [[nodiscard]]
     const vk::PhysicalDeviceProperties &GetProperties() const
     {
         return m_Properties;
     }
 
-    [[nodiscard]]
     const vk::PhysicalDeviceMemoryProperties &GetMemoryProperties() const
     {
         return m_MemoryProperties;
     }
 
-    [[nodiscard]]
     const QueueFamilyIndices &GetQueueFamilyIndices() const
     {
         return m_QueueFamilyIndices;
     }
 
-    [[nodiscard]]
     const std::set<std::uint32_t> &GetUniqueQueueFamilyIndices() const
     {
         return m_UniqueQueueFamilyIndices;
     }
 
-    [[nodiscard]]
     vk::Device GetHandle() const
     {
         return m_Device;
     }
 
-    [[nodiscard]]
     vk::Queue GetGraphicsQueue() const
     {
         return m_GraphicsQueue;
     }
 
-    [[nodiscard]]
     vk::Queue GetPresentQueue() const
     {
         return m_PresentQueue;
     }
+
+private:
+    [[nodiscard]]
+    Image CreateImage(
+        std::uint32_t width,
+        std::uint32_t height,
+        std::uint32_t layerCount,
+        vk::Format format,
+        vk::ImageTiling tiling,
+        vk::ImageUsageFlags usage,
+        vk::ImageCreateFlags flags,
+        vk::MemoryPropertyFlags properties
+    ) const;
 
 private:
     vk::PhysicalDevice m_PhysicalDevice;

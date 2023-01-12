@@ -1,5 +1,7 @@
 #include "Tga.hpp"
 
+#include "Utility.hpp"
+
 #include <span>
 
 Tga::Image Tga::Image::Load(const char *filepath)

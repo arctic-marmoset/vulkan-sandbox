@@ -1,8 +1,6 @@
 #ifndef VULKAN_RENDERER_TGA_HPP
 #define VULKAN_RENDERER_TGA_HPP
 
-#include "Utility.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
