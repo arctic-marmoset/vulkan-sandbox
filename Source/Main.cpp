@@ -1329,19 +1329,19 @@ private:
 
     void EnterMainLoop()
     {
+        constexpr auto initialFrameTime = std::chrono::duration<float>(1.0F / 30.0F);
+
         m_CurrentTick = std::chrono::steady_clock::now();
-        m_LastTick = m_CurrentTick - std::chrono::milliseconds(33);
+        m_LastTick = m_CurrentTick - std::chrono::duration_cast<std::chrono::steady_clock::duration>(initialFrameTime);
 
         while (!glfwWindowShouldClose(m_Window))
         {
             m_FrameTimeSum -= m_FrameTimeSamples[m_FrameTimeSampleIndex];
-            m_FrameTimeSamples[m_FrameTimeSampleIndex] =
-                std::chrono::duration<float>(m_CurrentTick - m_LastTick).count();
-
-            const float deltaTime = m_FrameTimeSamples[m_FrameTimeSampleIndex];
+            m_FrameTimeSamples[m_FrameTimeSampleIndex] = m_CurrentTick - m_LastTick;
+            m_FrameTimeSum += m_FrameTimeSamples[m_FrameTimeSampleIndex];
+            m_SmoothedFrameTime = m_FrameTimeSum / m_FrameTimeSamples.size();
+            const float deltaTime = std::chrono::duration<float>(m_FrameTimeSamples[m_FrameTimeSampleIndex]).count();
             m_FrameTimeSampleIndex = (m_FrameTimeSampleIndex + 1) % m_FrameTimeSamples.size();
-            m_FrameTimeSum += deltaTime;
-            m_SmoothedFrameTime = m_FrameTimeSum / (float)m_FrameTimeSamples.size();
 
             HandleInput();
             UpdateState(deltaTime);
@@ -1405,7 +1405,7 @@ private:
             m_Title.size(),
             "{} | Frame Time: {:>7.3f} ms | Position: ({:.2f}, {:.2f}, {:.2f}) | Heading: ({:.2f}, {:.2f}, {:.2f})",
             DefaultTitle,
-            m_SmoothedFrameTime * 1000.0F,
+            std::chrono::duration<float, std::milli>(m_SmoothedFrameTime).count(),
             m_Camera.GetPosition().x,
             m_Camera.GetPosition().y,
             m_Camera.GetPosition().z,
@@ -1791,12 +1791,12 @@ private:
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
     std::vector<vk::Fence> m_InFlightFences;
 
-    std::chrono::steady_clock::time_point m_LastTick;
-    std::chrono::steady_clock::time_point m_CurrentTick;
-    float m_FrameTimeSum = 0.0F;
-    float m_SmoothedFrameTime = 0.0F;
+    std::chrono::steady_clock::time_point m_LastTick = { };
+    std::chrono::steady_clock::time_point m_CurrentTick = { };
+    std::chrono::steady_clock::duration m_FrameTimeSum = { };
+    std::chrono::steady_clock::duration m_SmoothedFrameTime = { };
     std::size_t m_FrameTimeSampleIndex = 0;
-    std::array<float, FrameTimeSampleCount> m_FrameTimeSamples = { };
+    std::array<std::chrono::steady_clock::duration, FrameTimeSampleCount> m_FrameTimeSamples = { };
 
     struct Mouse
     {
