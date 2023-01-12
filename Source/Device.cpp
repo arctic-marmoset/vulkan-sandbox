@@ -237,7 +237,6 @@ vk::Device CreateDevice(
         [&queuePriorities](std::uint32_t index)
         {
             return vk::DeviceQueueCreateInfo()
-                .setQueueCount(queuePriorities.size())
                 .setQueuePriorities(queuePriorities)
                 .setQueueFamilyIndex(index);
         }
