@@ -1,6 +1,7 @@
 #include "Device.hpp"
 
 #include <bitset>
+#include <limits>
 #include <ranges>
 
 static vk::Device CreateDevice(
